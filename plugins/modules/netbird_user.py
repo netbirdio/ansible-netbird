@@ -43,7 +43,7 @@ options:
     description:
       - User's NetBird account role.
     type: str
-    choices: ['admin', 'user', 'owner']
+    choices: ['admin', 'user', 'owner', 'network_admin', 'auditor']
     default: user
   auto_groups:
     description:
@@ -197,7 +197,7 @@ def run_module():
         user_id=dict(type='str'),
         email=dict(type='str'),
         name=dict(type='str'),
-        role=dict(type='str', choices=['admin', 'user', 'owner'], default='user'),
+        role=dict(type='str', choices=['admin', 'user', 'owner', 'network_admin', 'auditor'], default='user'),
         auto_groups=dict(type='list', elements='str', default=[]),
         is_service_user=dict(type='bool', default=False),
         is_blocked=dict(type='bool'),
