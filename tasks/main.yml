@@ -64,3 +64,17 @@
     - netbird
     - netbird-posture-checks
 
+- name: Include identity provider management tasks
+  ansible.builtin.include_tasks: identity_providers.yml
+  when: netbird_identity_providers | length > 0
+  tags:
+    - netbird
+    - netbird-identity-providers
+
+- name: Include user invite management tasks
+  ansible.builtin.include_tasks: invites.yml
+  when: netbird_invites | length > 0
+  tags:
+    - netbird
+    - netbird-invites
+

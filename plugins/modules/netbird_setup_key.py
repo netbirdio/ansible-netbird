@@ -278,7 +278,6 @@ def run_module():
                 if not module.check_mode:
                     key, _ = api.update_setup_key(
                         existing_key['id'],
-                        name=name,
                         revoked=module.params['revoked'],
                         auto_groups=module.params['auto_groups']
                     )

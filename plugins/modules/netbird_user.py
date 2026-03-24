@@ -24,7 +24,6 @@ options:
       - The desired state of the user.
     type: str
     choices: ['present', 'absent']
-    default: present
   user_id:
     description:
       - The unique identifier of the user.
@@ -60,6 +59,14 @@ options:
     description:
       - If set to true, the user is blocked and cannot use the system.
     type: bool
+  action:
+    description:
+      - Action to perform on the user.
+      - Use 'approve' to approve a user with pending approval status.
+      - Use 'reject' to reject a user with pending approval status.
+      - Mutually exclusive with state.
+    type: str
+    choices: ['approve', 'reject']
   resend_invitation:
     description:
       - Resend user invitation email.
@@ -193,7 +200,7 @@ def run_module():
     """Main module execution."""
     argument_spec = netbird_argument_spec()
     argument_spec.update(
-        state=dict(type='str', choices=['present', 'absent'], default='present'),
+        state=dict(type='str', choices=['present', 'absent']),
         user_id=dict(type='str'),
         email=dict(type='str'),
         name=dict(type='str'),
@@ -201,7 +208,8 @@ def run_module():
         auto_groups=dict(type='list', elements='str', default=[]),
         is_service_user=dict(type='bool', default=False),
         is_blocked=dict(type='bool'),
-        resend_invitation=dict(type='bool', default=False)
+        resend_invitation=dict(type='bool', default=False),
+        action=dict(type='str', choices=['approve', 'reject']),
     )
 
     module = AnsibleModule(
@@ -209,7 +217,9 @@ def run_module():
         supports_check_mode=True,
         required_if=[
             ('state', 'absent', ['user_id']),
-        ]
+        ],
+        mutually_exclusive=[['state', 'action']],
+        required_one_of=[['state', 'action']]
     )
 
     api = NetBirdAPI(
@@ -235,6 +245,21 @@ def run_module():
     )
 
     try:
+        # Handle action parameter (approve/reject)
+        action = module.params.get('action')
+        if action:
+            user_id = module.params['user_id']
+            if not user_id:
+                module.fail_json(msg="user_id is required when using action parameter")
+            if not module.check_mode:
+                if action == 'approve':
+                    api.approve_user(user_id)
+                elif action == 'reject':
+                    api.reject_user(user_id)
+            result['changed'] = True
+            result['msg'] = f'User {action}d successfully'
+            module.exit_json(**result)
+
         # Handle resend invitation
         if resend_invitation and user_id:
             if not module.check_mode:

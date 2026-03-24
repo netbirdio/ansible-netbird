@@ -23,9 +23,10 @@ options:
     description:
       - Type of resource to gather information about.
     type: str
-    choices: ['accounts', 'users', 'peers', 'groups', 'setup_keys', 'policies', 
-              'networks', 'routes', 'dns_nameservers', 'dns_settings', 
-              'posture_checks', 'events', 'countries', 'current_user']
+    choices: ['accounts', 'users', 'peers', 'groups', 'setup_keys', 'policies',
+              'networks', 'routes', 'dns_nameservers', 'dns_settings',
+              'posture_checks', 'events', 'countries', 'current_user',
+              'identity_providers', 'invites']
     required: true
   service_user:
     description:
@@ -133,10 +134,10 @@ def run_module():
         resource=dict(
             type='str',
             required=True,
-            choices=['accounts', 'users', 'peers', 'groups', 'setup_keys', 
-                     'policies', 'networks', 'routes', 'dns_nameservers', 
+            choices=['accounts', 'users', 'peers', 'groups', 'setup_keys',
+                     'policies', 'networks', 'routes', 'dns_nameservers',
                      'dns_settings', 'posture_checks', 'events', 'countries',
-                     'current_user']
+                     'current_user', 'identity_providers', 'invites']
         ),
         service_user=dict(type='bool'),
         country_code=dict(type='str')
@@ -192,6 +193,10 @@ def run_module():
             data, _ = api.list_events()
         elif resource == 'countries':
             data, _ = api.list_countries()
+        elif resource == 'identity_providers':
+            data, _ = api.list_identity_providers()
+        elif resource == 'invites':
+            data, _ = api.list_user_invites()
         else:
             module.fail_json(msg=f"Unknown resource type: {resource}")
 

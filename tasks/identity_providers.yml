@@ -1,0 +1,18 @@
+---
+# tasks/identity_providers.yml - Identity provider management tasks
+
+- name: Manage NetBird identity providers
+  community.ansible_netbird.netbird_idp:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    validate_certs: "{{ netbird_validate_certs }}"
+    name: "{{ item.name }}"
+    type: "{{ item.type }}"
+    issuer: "{{ item.issuer }}"
+    client_id: "{{ item.client_id }}"
+    client_secret: "{{ item.client_secret }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ netbird_identity_providers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: netbird_identity_providers | length > 0

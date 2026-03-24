@@ -45,6 +45,11 @@ options:
       - Whether the policy is enabled.
     type: bool
     default: true
+  source_posture_checks:
+    description:
+      - List of posture check IDs applied to policy source groups.
+    type: list
+    elements: str
   rules:
     description:
       - List of policy rules.
@@ -82,7 +87,7 @@ options:
         default: true
       protocol:
         description:
-          - Network protocol (all, tcp, udp, icmp).
+          - Network protocol (all, tcp, udp, icmp, netbird-ssh).
         type: str
         default: all
       ports:
@@ -90,6 +95,53 @@ options:
           - List of destination ports (e.g., ["80", "443", "8000-9000"]).
         type: list
         elements: str
+      port_ranges:
+        description:
+          - List of port ranges.
+          - Each range has start and end port numbers.
+        type: list
+        elements: dict
+        suboptions:
+          start:
+            description:
+              - Start port number.
+            type: int
+            required: true
+          end:
+            description:
+              - End port number.
+            type: int
+            required: true
+      destination_resource:
+        description:
+          - Destination network resource for the rule.
+        type: dict
+        suboptions:
+          id:
+            description:
+              - Resource ID.
+            type: str
+            required: true
+          type:
+            description:
+              - Resource type.
+            type: str
+            required: true
+      source_resource:
+        description:
+          - Source network resource for the rule.
+        type: dict
+        suboptions:
+          id:
+            description:
+              - Resource ID.
+            type: str
+            required: true
+          type:
+            description:
+              - Resource type.
+            type: str
+            required: true
       action:
         description:
           - Action to take (accept, drop).
@@ -194,6 +246,43 @@ def find_policy_by_name(api, name):
     return None
 
 
+def build_rule_data(rule):
+    """Build rule payload for the API from Ansible rule config."""
+    rule_data = {}
+    if rule.get('name') is not None:
+        rule_data['name'] = rule['name']
+    if rule.get('description') is not None:
+        rule_data['description'] = rule['description']
+    if rule.get('enabled') is not None:
+        rule_data['enabled'] = rule['enabled']
+    if rule.get('sources') is not None:
+        rule_data['sources'] = rule['sources']
+    if rule.get('destinations') is not None:
+        rule_data['destinations'] = rule['destinations']
+    if rule.get('bidirectional') is not None:
+        rule_data['bidirectional'] = rule['bidirectional']
+    if rule.get('protocol') is not None:
+        rule_data['protocol'] = rule['protocol']
+    if rule.get('ports') is not None:
+        rule_data['ports'] = rule['ports']
+    if rule.get('port_ranges') is not None:
+        rule_data['port_ranges'] = rule['port_ranges']
+    if rule.get('destination_resource') is not None:
+        rule_data['destinationResource'] = rule['destination_resource']
+    if rule.get('source_resource') is not None:
+        rule_data['sourceResource'] = rule['source_resource']
+    if rule.get('action') is not None:
+        rule_data['action'] = rule['action']
+    return rule_data
+
+
+def build_rules_data(rules):
+    """Build list of rule payloads for the API."""
+    if rules is None:
+        return None
+    return [build_rule_data(rule) for rule in rules]
+
+
 def policy_needs_update(current, params):
     """Check if policy needs to be updated."""
     if params.get('name') is not None and current.get('name') != params['name']:
@@ -201,6 +290,8 @@ def policy_needs_update(current, params):
     if params.get('description') is not None and current.get('description') != params['description']:
         return True
     if params.get('enabled') is not None and current.get('enabled') != params['enabled']:
+        return True
+    if params.get('source_posture_checks') is not None and current.get('source_posture_checks') != params['source_posture_checks']:
         return True
     # For rules, always update if provided to ensure they match exactly
     if params.get('rules') is not None:
@@ -217,7 +308,30 @@ def run_module():
         name=dict(type='str'),
         description=dict(type='str', default=''),
         enabled=dict(type='bool', default=True),
-        rules=dict(type='list', elements='dict')
+        source_posture_checks=dict(type='list', elements='str'),
+        rules=dict(type='list', elements='dict', options=dict(
+            name=dict(type='str'),
+            description=dict(type='str'),
+            enabled=dict(type='bool', default=True),
+            sources=dict(type='list', elements='str'),
+            destinations=dict(type='list', elements='str'),
+            bidirectional=dict(type='bool', default=True),
+            protocol=dict(type='str', default='all'),
+            ports=dict(type='list', elements='str'),
+            port_ranges=dict(type='list', elements='dict', options=dict(
+                start=dict(type='int', required=True),
+                end=dict(type='int', required=True)
+            )),
+            destination_resource=dict(type='dict', options=dict(
+                id=dict(type='str', required=True),
+                type=dict(type='str', required=True)
+            )),
+            source_resource=dict(type='dict', options=dict(
+                id=dict(type='str', required=True),
+                type=dict(type='str', required=True)
+            )),
+            action=dict(type='str', default='accept')
+        ))
     )
 
     module = AnsibleModule(
@@ -240,7 +354,8 @@ def run_module():
     name = module.params['name']
     description = module.params['description']
     enabled = module.params['enabled']
-    rules = module.params['rules']
+    source_posture_checks = module.params['source_posture_checks']
+    rules = build_rules_data(module.params['rules'])
 
     result = dict(
         changed=False,
@@ -274,6 +389,7 @@ def run_module():
                 'name': name,
                 'description': description,
                 'enabled': enabled,
+                'source_posture_checks': source_posture_checks,
                 'rules': rules
             }
             
@@ -284,7 +400,8 @@ def run_module():
                         name=name,
                         enabled=enabled,
                         description=description,
-                        rules=rules
+                        rules=rules,
+                        source_posture_checks=source_posture_checks
                     )
                     result['policy'] = policy
                 else:
@@ -302,7 +419,8 @@ def run_module():
                     name=name,
                     enabled=enabled,
                     description=description,
-                    rules=rules or []
+                    rules=rules or [],
+                    source_posture_checks=source_posture_checks
                 )
                 result['policy'] = policy
             result['changed'] = True

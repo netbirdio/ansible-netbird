@@ -20,8 +20,10 @@ This collection provides comprehensive management of NetBird resources:
 - **Routes** - Manage legacy routes (deprecated, use Networks instead)
 - **DNS** - Configure nameserver groups and DNS settings
 - **Posture Checks** - Define security compliance requirements
-- **Accounts** - Manage account-wide settings
+- **Accounts** - Manage account-wide settings (including extra settings, auto-update, peer expose)
 - **Tokens** - Create and manage personal access tokens
+- **Identity Providers** - Configure identity providers (Google, Okta, Entra, OIDC, etc.)
+- **Invites** - Manage user invite links with expiration and regeneration
 - **Info** - Gather information about any resource
 
 ## Requirements
@@ -189,6 +191,8 @@ Manage NetBird access policies.
     name: "developers-to-servers"
     description: "Allow developers SSH access to servers"
     enabled: true
+    source_posture_checks:
+      - "posture-check-id"
     rules:
       - name: "ssh-access"
         sources:
@@ -199,6 +203,16 @@ Manage NetBird access policies.
         protocol: "tcp"
         ports:
           - "22"
+        action: "accept"
+      - name: "web-access"
+        sources:
+          - "developers-group-id"
+        destinations:
+          - "servers-group-id"
+        protocol: "tcp"
+        port_ranges:
+          - start: 8000
+            end: 9000
         action: "accept"
     state: present
 ```
@@ -383,6 +397,11 @@ Manage NetBird account settings.
     jwt_groups_enabled: true
     jwt_groups_claim_name: "groups"
     dns_domain: "netbird.example.com"
+    auto_update_always: true
+    auto_update_version: "latest"
+    peer_expose_enabled: true
+    extra_peer_approval_enabled: false
+    extra_network_traffic_logs_enabled: true
     state: present
 ```
 
@@ -405,6 +424,72 @@ Manage NetBird personal access tokens.
   debug:
     msg: "Token: {{ new_token.token.plain_token }}"
   when: new_token.changed
+```
+
+### netbird_idp
+
+Manage NetBird identity providers.
+
+```yaml
+# Create an OIDC identity provider
+- name: Configure identity provider
+  community.ansible_netbird.netbird_idp:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    name: "corporate-sso"
+    type: "oidc"
+    issuer: "https://auth.example.com"
+    client_id: "your-client-id"
+    client_secret: "your-client-secret"
+    state: present
+
+# Create a Google identity provider
+- name: Configure Google IDP
+  community.ansible_netbird.netbird_idp:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    name: "google-workspace"
+    type: "google"
+    issuer: "https://accounts.google.com"
+    client_id: "your-google-client-id"
+    client_secret: "your-google-client-secret"
+    state: present
+```
+
+### netbird_invite
+
+Manage NetBird user invites.
+
+```yaml
+# Create a user invite
+- name: Invite a new user
+  community.ansible_netbird.netbird_invite:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    email: "newuser@example.com"
+    name: "New User"
+    role: "user"
+    auto_groups:
+      - "developers-group-id"
+    expires_in: 604800  # 7 days
+    state: present
+
+# Regenerate an expired invite
+- name: Regenerate invite link
+  community.ansible_netbird.netbird_invite:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    email: "newuser@example.com"
+    regenerate: true
+    state: present
+
+# Delete an invite
+- name: Remove invite
+  community.ansible_netbird.netbird_invite:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    invite_id: "invite-id-123"
+    state: absent
 ```
 
 ### netbird_info
@@ -434,7 +519,7 @@ Gather information about NetBird resources.
   register: me
 ```
 
-Available resources: `accounts`, `users`, `peers`, `groups`, `setup_keys`, `policies`, `networks`, `routes`, `dns_nameservers`, `dns_settings`, `posture_checks`, `events`, `countries`, `current_user`
+Available resources: `accounts`, `users`, `peers`, `groups`, `setup_keys`, `policies`, `networks`, `routes`, `dns_nameservers`, `dns_settings`, `posture_checks`, `events`, `countries`, `current_user`, `identity_providers`, `invites`
 
 ## Role Usage
 
@@ -516,6 +601,7 @@ This collection implements the [NetBird REST API](https://docs.netbird.io/api). 
 - [Networks](https://docs.netbird.io/api/resources/networks)
 - [DNS](https://docs.netbird.io/api/resources/dns)
 - [Posture Checks](https://docs.netbird.io/api/resources/posture-checks)
+- [Identity Providers](https://docs.netbird.io/api/resources/identity-providers)
 - [Events](https://docs.netbird.io/api/resources/events)
 
 ## Contributing

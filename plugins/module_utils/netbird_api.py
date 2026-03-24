@@ -244,8 +244,8 @@ class NetBirdAPI:
         """Get a specific peer."""
         return self.get(f'/api/peers/{peer_id}')
 
-    def update_peer(self, peer_id, name=None, ssh_enabled=None, login_expiration_enabled=None, 
-                    inactivity_expiration_enabled=None, approval_required=None):
+    def update_peer(self, peer_id, name=None, ssh_enabled=None, login_expiration_enabled=None,
+                    inactivity_expiration_enabled=None, approval_required=None, ip=None):
         """Update a peer."""
         data = {}
         if name is not None:
@@ -258,6 +258,8 @@ class NetBirdAPI:
             data['inactivity_expiration_enabled'] = inactivity_expiration_enabled
         if approval_required is not None:
             data['approval_required'] = approval_required
+        if ip is not None:
+            data['ip'] = ip
         return self.put(f'/api/peers/{peer_id}', data=data)
 
     def delete_peer(self, peer_id):
@@ -288,11 +290,9 @@ class NetBirdAPI:
         }
         return self.post('/api/setup-keys', data=data)
 
-    def update_setup_key(self, key_id, name=None, revoked=None, auto_groups=None):
-        """Update a setup key."""
+    def update_setup_key(self, key_id, revoked=None, auto_groups=None):
+        """Update a setup key. Only revoked and auto_groups can be changed after creation."""
         data = {}
-        if name is not None:
-            data['name'] = name
         if revoked is not None:
             data['revoked'] = revoked
         if auto_groups is not None:
@@ -346,7 +346,7 @@ class NetBirdAPI:
         """Get a specific policy."""
         return self.get(f'/api/policies/{policy_id}')
 
-    def create_policy(self, name, enabled=True, description='', rules=None):
+    def create_policy(self, name, enabled=True, description='', rules=None, source_posture_checks=None):
         """Create a new policy."""
         data = {
             'name': name,
@@ -354,9 +354,12 @@ class NetBirdAPI:
             'description': description,
             'rules': rules or []
         }
+        if source_posture_checks is not None:
+            data['source_posture_checks'] = source_posture_checks
         return self.post('/api/policies', data=data)
 
-    def update_policy(self, policy_id, name=None, enabled=None, description=None, rules=None):
+    def update_policy(self, policy_id, name=None, enabled=None, description=None, rules=None,
+                      source_posture_checks=None):
         """Update a policy."""
         data = {}
         if name is not None:
@@ -367,6 +370,8 @@ class NetBirdAPI:
             data['description'] = description
         if rules is not None:
             data['rules'] = rules
+        if source_posture_checks is not None:
+            data['source_posture_checks'] = source_posture_checks
         return self.put(f'/api/policies/{policy_id}', data=data)
 
     def delete_policy(self, policy_id):
@@ -412,11 +417,13 @@ class NetBirdAPI:
         """Get a specific network router."""
         return self.get(f'/api/networks/{network_id}/routers/{router_id}')
 
-    def create_network_router(self, network_id, peer_id=None, peer_groups=None, metric=9999, masquerade=False):
+    def create_network_router(self, network_id, peer_id=None, peer_groups=None, metric=9999,
+                              masquerade=False, enabled=True):
         """Create a new network router."""
         data = {
             'metric': metric,
-            'masquerade': masquerade
+            'masquerade': masquerade,
+            'enabled': enabled
         }
         if peer_id:
             data['peer'] = peer_id
@@ -424,8 +431,8 @@ class NetBirdAPI:
             data['peer_groups'] = peer_groups
         return self.post(f'/api/networks/{network_id}/routers', data=data)
 
-    def update_network_router(self, network_id, router_id, peer_id=None, peer_groups=None, 
-                              metric=None, masquerade=None):
+    def update_network_router(self, network_id, router_id, peer_id=None, peer_groups=None,
+                              metric=None, masquerade=None, enabled=None):
         """Update a network router."""
         data = {}
         if peer_id is not None:
@@ -436,6 +443,8 @@ class NetBirdAPI:
             data['metric'] = metric
         if masquerade is not None:
             data['masquerade'] = masquerade
+        if enabled is not None:
+            data['enabled'] = enabled
         return self.put(f'/api/networks/{network_id}/routers/{router_id}', data=data)
 
     def delete_network_router(self, network_id, router_id):
@@ -646,6 +655,84 @@ class NetBirdAPI:
     def list_events(self):
         """List all events."""
         return self.get('/api/events')
+
+    # Identity Provider operations
+    def list_identity_providers(self):
+        """List all identity providers."""
+        return self.get('/api/identity-providers')
+
+    def get_identity_provider(self, idp_id):
+        """Get a specific identity provider."""
+        return self.get(f'/api/identity-providers/{idp_id}')
+
+    def create_identity_provider(self, name, idp_type, issuer, client_id, client_secret):
+        """Create a new identity provider."""
+        data = {
+            'name': name,
+            'type': idp_type,
+            'issuer': issuer,
+            'client_id': client_id,
+            'client_secret': client_secret
+        }
+        return self.post('/api/identity-providers', data=data)
+
+    def update_identity_provider(self, idp_id, name=None, idp_type=None, issuer=None,
+                                 client_id=None, client_secret=None):
+        """Update an identity provider."""
+        data = {}
+        if name is not None:
+            data['name'] = name
+        if idp_type is not None:
+            data['type'] = idp_type
+        if issuer is not None:
+            data['issuer'] = issuer
+        if client_id is not None:
+            data['client_id'] = client_id
+        if client_secret is not None:
+            data['client_secret'] = client_secret
+        return self.put(f'/api/identity-providers/{idp_id}', data=data)
+
+    def delete_identity_provider(self, idp_id):
+        """Delete an identity provider."""
+        return self.delete(f'/api/identity-providers/{idp_id}')
+
+    # User Invite operations
+    def list_user_invites(self):
+        """List all user invites."""
+        return self.get('/api/users/invites')
+
+    def create_user_invite(self, email, name=None, role=None, auto_groups=None, expires_in=None):
+        """Create a new user invite."""
+        data = {'email': email}
+        if name is not None:
+            data['name'] = name
+        if role is not None:
+            data['role'] = role
+        if auto_groups is not None:
+            data['auto_groups'] = auto_groups
+        if expires_in is not None:
+            data['expires_in'] = expires_in
+        return self.post('/api/users/invites', data=data)
+
+    def delete_user_invite(self, invite_id):
+        """Delete a user invite."""
+        return self.delete(f'/api/users/invites/{invite_id}')
+
+    def regenerate_user_invite(self, invite_id, expires_in=None):
+        """Regenerate a user invite token."""
+        data = {}
+        if expires_in is not None:
+            data['expires_in'] = expires_in
+        return self.post(f'/api/users/invites/{invite_id}/regenerate', data=data)
+
+    # User approval operations
+    def approve_user(self, user_id):
+        """Approve a pending user."""
+        return self.post(f'/api/users/{user_id}/approve')
+
+    def reject_user(self, user_id):
+        """Reject a pending user."""
+        return self.delete(f'/api/users/{user_id}/reject')
 
     # Geo-location operations
     def list_countries(self):

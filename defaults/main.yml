@@ -158,6 +158,28 @@ netbird_posture_checks: []
 #         min_version: "0.25.0"
 #     state: present
 
+# Identity provider management
+netbird_identity_providers: []
+# Example:
+# netbird_identity_providers:
+#   - name: "google-idp"
+#     type: "google"  # entra, google, microsoft, oidc, okta, pocketid, zitadel
+#     issuer: "https://accounts.google.com"
+#     client_id: "your-client-id"
+#     client_secret: "your-client-secret"
+#     state: present
+
+# User invite management
+netbird_invites: []
+# Example:
+# netbird_invites:
+#   - email: "newuser@example.com"
+#     name: "New User"
+#     role: "user"  # admin, user
+#     auto_groups: []
+#     expires_in: 604800  # 7 days in seconds
+#     state: present
+
 # Account settings
 netbird_account_settings: {}
 # Example:

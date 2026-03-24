@@ -1,0 +1,19 @@
+---
+# tasks/invites.yml - User invite management tasks
+
+- name: Manage NetBird user invites
+  community.ansible_netbird.netbird_invite:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    validate_certs: "{{ netbird_validate_certs }}"
+    email: "{{ item.email }}"
+    name: "{{ item.name | default(omit) }}"
+    role: "{{ item.role | default('user') }}"
+    auto_groups: "{{ item.auto_groups | default([]) }}"
+    expires_in: "{{ item.expires_in | default(omit) }}"
+    regenerate: "{{ item.regenerate | default(false) }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ netbird_invites }}"
+  loop_control:
+    label: "{{ item.email }}"
+  when: netbird_invites | length > 0

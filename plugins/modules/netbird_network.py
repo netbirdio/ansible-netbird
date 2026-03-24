@@ -72,6 +72,11 @@ options:
           - Whether to masquerade (NAT) traffic through this router.
         type: bool
         default: false
+      enabled:
+        description:
+          - Whether the router is enabled.
+        type: bool
+        default: true
   resources:
     description:
       - List of resources (network addresses, CIDRs, or domains) for this network.
@@ -348,6 +353,8 @@ def router_needs_update(current, desired):
         return True
     if current.get('masquerade') != desired.get('masquerade', False):
         return True
+    if current.get('enabled') != desired.get('enabled', True):
+        return True
     return False
 
 
@@ -399,7 +406,8 @@ def sync_routers(api, module, network_id, desired_routers):
                         peer_id=peer if peer else None,
                         peer_groups=peer_groups,
                         metric=desired.get('metric', 9999),
-                        masquerade=desired.get('masquerade', False)
+                        masquerade=desired.get('masquerade', False),
+                        enabled=desired.get('enabled', True)
                     )
                     final_routers.append(updated)
                 else:
@@ -415,7 +423,8 @@ def sync_routers(api, module, network_id, desired_routers):
                     peer_id=peer if peer else None,
                     peer_groups=peer_groups,
                     metric=desired.get('metric', 9999),
-                    masquerade=desired.get('masquerade', False)
+                    masquerade=desired.get('masquerade', False),
+                    enabled=desired.get('enabled', True)
                 )
                 final_routers.append(created)
             changed = True
@@ -503,7 +512,8 @@ def run_module():
                 peer=dict(type='str'),
                 peer_groups=dict(type='list', elements='str'),
                 metric=dict(type='int', default=9999),
-                masquerade=dict(type='bool', default=False)
+                masquerade=dict(type='bool', default=False),
+                enabled=dict(type='bool', default=True)
             ),
             required_one_of=[('peer', 'peer_groups')],
             mutually_exclusive=[('peer', 'peer_groups')]

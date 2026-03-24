@@ -52,6 +52,11 @@ options:
     description:
       - Whether approval is required for the peer.
     type: bool
+  ip:
+    description:
+      - The IP address to assign to the peer within the NetBird network.
+      - Allows reassigning a peer's IP.
+    type: str
 extends_documentation_fragment:
   - community.ansible_netbird.netbird
 requirements:
@@ -167,8 +172,8 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def peer_needs_update(current, params):
     """Check if peer needs to be updated."""
-    for key in ['name', 'ssh_enabled', 'login_expiration_enabled', 
-                'inactivity_expiration_enabled', 'approval_required']:
+    for key in ['name', 'ssh_enabled', 'login_expiration_enabled',
+                'inactivity_expiration_enabled', 'approval_required', 'ip']:
         if params.get(key) is not None:
             if current.get(key) != params[key]:
                 return True
@@ -185,7 +190,8 @@ def run_module():
         ssh_enabled=dict(type='bool'),
         login_expiration_enabled=dict(type='bool'),
         inactivity_expiration_enabled=dict(type='bool'),
-        approval_required=dict(type='bool')
+        approval_required=dict(type='bool'),
+        ip=dict(type='str')
     )
 
     module = AnsibleModule(
@@ -232,9 +238,10 @@ def run_module():
             'ssh_enabled': module.params['ssh_enabled'],
             'login_expiration_enabled': module.params['login_expiration_enabled'],
             'inactivity_expiration_enabled': module.params['inactivity_expiration_enabled'],
-            'approval_required': module.params['approval_required']
+            'approval_required': module.params['approval_required'],
+            'ip': module.params['ip']
         }
-        
+
         if peer_needs_update(existing_peer, update_params):
             if not module.check_mode:
                 peer, _ = api.update_peer(
@@ -243,7 +250,8 @@ def run_module():
                     ssh_enabled=module.params['ssh_enabled'],
                     login_expiration_enabled=module.params['login_expiration_enabled'],
                     inactivity_expiration_enabled=module.params['inactivity_expiration_enabled'],
-                    approval_required=module.params['approval_required']
+                    approval_required=module.params['approval_required'],
+                    ip=module.params['ip']
                 )
                 result['peer'] = peer
             else:
