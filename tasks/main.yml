@@ -29,12 +29,19 @@
     - netbird
     - netbird-setup-keys
 
-- name: Include policy management tasks
-  ansible.builtin.include_tasks: policies.yml
-  when: netbird_policies | length > 0
+- name: Include posture check management tasks
+  ansible.builtin.include_tasks: posture_checks.yml
+  when: netbird_posture_checks | length > 0
   tags:
     - netbird
-    - netbird-policies
+    - netbird-posture-checks
+
+- name: Include DNS management tasks
+  ansible.builtin.include_tasks: dns.yml
+  when: netbird_dns_nameserver_groups | length > 0 or netbird_dns_disabled_management_groups | length > 0
+  tags:
+    - netbird
+    - netbird-dns
 
 - name: Include network management tasks
   ansible.builtin.include_tasks: networks.yml
@@ -50,19 +57,12 @@
     - netbird
     - netbird-routes
 
-- name: Include DNS management tasks
-  ansible.builtin.include_tasks: dns.yml
-  when: netbird_dns_nameserver_groups | length > 0 or netbird_dns_disabled_management_groups | length > 0
+- name: Include policy management tasks
+  ansible.builtin.include_tasks: policies.yml
+  when: netbird_policies | length > 0
   tags:
     - netbird
-    - netbird-dns
-
-- name: Include posture check management tasks
-  ansible.builtin.include_tasks: posture_checks.yml
-  when: netbird_posture_checks | length > 0
-  tags:
-    - netbird
-    - netbird-posture-checks
+    - netbird-policies
 
 - name: Include identity provider management tasks
   ansible.builtin.include_tasks: identity_providers.yml
