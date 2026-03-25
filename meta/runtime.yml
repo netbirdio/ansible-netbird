@@ -1,0 +1,17 @@
+---
+action_groups:
+  netbird:
+    - netbird_account
+    - netbird_dns
+    - netbird_group
+    - netbird_idp
+    - netbird_info
+    - netbird_invite
+    - netbird_network
+    - netbird_peer
+    - netbird_policy
+    - netbird_posture_check
+    - netbird_route
+    - netbird_setup_key
+    - netbird_token
+    - netbird_user
