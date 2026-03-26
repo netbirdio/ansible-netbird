@@ -114,6 +114,7 @@
       ansible.builtin.stat:
         path: "{{ config_dir }}"
       register: config_dir_stat
+      delegate_to: localhost
 
     - name: Fail if config directory doesn't exist
       ansible.builtin.fail:
