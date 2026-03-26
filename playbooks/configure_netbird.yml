@@ -69,7 +69,6 @@
 
 - name: Configure NetBird from IaC Definitions
   hosts: "{{ target_hosts | default('localhost') }}"
-  connection: local
   gather_facts: false
   run_once: true
 

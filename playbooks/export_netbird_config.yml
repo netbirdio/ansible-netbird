@@ -24,7 +24,6 @@
 
 - name: Export Current NetBird Configuration
   hosts: "{{ target_hosts | default('localhost') }}"
-  connection: local
   gather_facts: true
   run_once: true
 
