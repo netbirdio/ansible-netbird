@@ -18,6 +18,6 @@
 - name: Export Current NetBird Configuration
   hosts: "{{ target_hosts | default('localhost') }}"
   gather_facts: true
-  run_once: true
   roles:
-    - community.ansible_netbird.export
+    - role: community.ansible_netbird.export
+      run_once: true

@@ -621,9 +621,9 @@ For inventory-based workflows (e.g., AAP), use the roles directly in your own pl
 - name: Configure NetBird
   hosts: netbird_control_nodes
   gather_facts: false
-  run_once: true
   roles:
     - role: community.ansible_netbird.configure
+      run_once: true
       vars:
         config_dir: "{{ playbook_dir }}/../netbird_config/{{ netbird_env }}"
 ```
