@@ -35,24 +35,16 @@ This collection provides comprehensive management of NetBird resources:
 
 ## Installation
 
-### From Ansible Galaxy (when published)
-
-```bash
-ansible-galaxy collection install community.ansible_netbird
-```
-
-### From Source
+This collection is not yet published to Ansible Galaxy. Install from source:
 
 ```bash
 # Clone the repository
-git clone https://github.com/community/ansible-netbird.git
+git clone https://github.com/YOUR_USERNAME/ansible-netbird.git
 
-# Build the collection
+# Build and install the collection
 cd ansible-netbird
 ansible-galaxy collection build
-
-# Install the collection
-ansible-galaxy collection install community-netbird-1.0.0.tar.gz
+ansible-galaxy collection install community-ansible_netbird-*.tar.gz
 ```
 
 ## Authentication
