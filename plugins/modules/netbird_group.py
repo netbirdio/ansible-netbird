@@ -134,13 +134,19 @@ def group_needs_update(current, desired):
     if 'name' in desired and desired['name'] is not None:
         if current.get('name') != desired['name']:
             return True
-    
+
     if 'peers' in desired and desired['peers'] is not None:
-        current_peers = set(current.get('peers', []))
+        # API returns peers as dicts [{"id": "...", "name": "..."}] or null;
+        # desired peers are plain ID strings from the module parameter.
+        raw_peers = current.get('peers') or []
+        if raw_peers and isinstance(raw_peers[0], dict):
+            current_peers = set(p['id'] for p in raw_peers)
+        else:
+            current_peers = set(raw_peers)
         desired_peers = set(desired['peers'])
         if current_peers != desired_peers:
             return True
-    
+
     return False
 
 
