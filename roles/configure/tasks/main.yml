@@ -310,6 +310,7 @@
       loop_control:
         label: "{{ item.item.name }}"
       when:
+        - display_setup_key_values | bool
         - item.changed | default(false)
         - item.setup_key.key is defined
 

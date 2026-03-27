@@ -10,3 +10,6 @@ strict: false
 
 # Validate API TLS certificates
 netbird_validate_certs: true
+
+# Display setup key values in job output (default: false for security)
+display_setup_key_values: false
