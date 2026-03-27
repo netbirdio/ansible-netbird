@@ -227,17 +227,49 @@ def find_nsgroup_by_name(api, name):
     return None
 
 
+def normalize_nameserver(ns):
+    """Normalize a nameserver for comparison."""
+    return {
+        'ip': ns.get('ip', ''),
+        'ns_type': ns.get('ns_type', 'udp'),
+        'port': ns.get('port', 53),
+    }
+
+
+def nameservers_need_update(current_ns, desired_ns):
+    """Check if nameservers need to be updated."""
+    current_ns = current_ns or []
+    desired_ns = desired_ns or []
+    if len(current_ns) != len(desired_ns):
+        return True
+    current_sorted = sorted(
+        [normalize_nameserver(ns) for ns in current_ns],
+        key=lambda x: x['ip']
+    )
+    desired_sorted = sorted(
+        [normalize_nameserver(ns) for ns in desired_ns],
+        key=lambda x: x['ip']
+    )
+    return current_sorted != desired_sorted
+
+
 def nsgroup_needs_update(current, params):
     """Check if nameserver group needs to be updated."""
-    check_fields = ['name', 'description', 'enabled', 'primary', 'search_domains_enabled']
+    check_fields = ['name', 'enabled', 'primary', 'search_domains_enabled']
     for field in check_fields:
         if params.get(field) is not None and current.get(field) != params[field]:
             return True
-    
+
+    # Check description (normalize None to '')
+    if params.get('description') is not None:
+        if (current.get('description') or '') != (params['description'] or ''):
+            return True
+
     # Check nameservers
     if params.get('nameservers') is not None:
-        return True  # Always update if nameservers provided
-    
+        if nameservers_need_update(current.get('nameservers'), params['nameservers']):
+            return True
+
     # Check groups
     if params.get('groups') is not None:
         current_groups = set(extract_ids(current.get('groups') or []))

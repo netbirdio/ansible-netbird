@@ -336,14 +336,15 @@ def network_needs_update(current, params):
     """Check if network needs to be updated."""
     if params.get('name') is not None and current.get('name') != params['name']:
         return True
-    if params.get('description') is not None and current.get('description') != params['description']:
-        return True
+    if params.get('description') is not None:
+        if (current.get('description') or '') != (params['description'] or ''):
+            return True
     return False
 
 
 def get_router_key(router):
     """Generate a unique key for a router based on peer/peer_groups."""
-    peer = router.get('peer', '')
+    peer = router.get('peer') or ''
     peer_groups = tuple(sorted(extract_ids(router.get('peer_groups') or [])))
     return (peer, peer_groups)
 
@@ -361,9 +362,9 @@ def router_needs_update(current, desired):
 
 def resource_needs_update(current, desired):
     """Check if a resource needs to be updated."""
-    if current.get('name', '') != desired.get('name', ''):
+    if (current.get('name') or '') != (desired.get('name') or ''):
         return True
-    if current.get('description', '') != desired.get('description', ''):
+    if (current.get('description') or '') != (desired.get('description') or ''):
         return True
     if current.get('enabled', True) != desired.get('enabled', True):
         return True
@@ -385,8 +386,8 @@ def sync_routers(api, module, network_id, desired_routers):
     # Build desired routers map
     desired_by_key = {}
     for router in desired_routers:
-        peer = router.get('peer', '')
-        peer_groups = router.get('peer_groups', []) or []
+        peer = router.get('peer') or ''
+        peer_groups = router.get('peer_groups') or []
         key = (peer, tuple(sorted(peer_groups)))
         desired_by_key[key] = router
     
