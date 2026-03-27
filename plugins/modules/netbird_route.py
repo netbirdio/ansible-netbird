@@ -197,9 +197,14 @@ def find_route_by_network_id(api, network_id):
 
 def route_needs_update(current, params):
     """Check if route needs to be updated."""
-    check_fields = ['network', 'description', 'metric', 'masquerade', 'enabled', 'keep_route']
+    check_fields = ['network', 'metric', 'masquerade', 'enabled', 'keep_route']
     for field in check_fields:
         if params.get(field) is not None and current.get(field) != params[field]:
+            return True
+
+    # Check description (normalize None to '')
+    if params.get('description') is not None:
+        if (current.get('description') or '') != (params['description'] or ''):
             return True
     
     # Check peer
