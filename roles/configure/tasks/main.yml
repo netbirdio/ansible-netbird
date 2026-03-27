@@ -306,11 +306,10 @@
           Key value: {{ item.setup_key.key }}
           This value is shown ONCE and cannot be retrieved later.
           Store it securely (e.g., HashiCorp Vault).
-      loop: "{{ netbird_setup_key_results.results | default([]) }}"
+      loop: "{{ (netbird_setup_key_results | default({'results': []})).results }}"
       loop_control:
         label: "{{ item.item.name }}"
       when:
-        - netbird_setup_key_results is not skipped
         - item.changed | default(false)
         - item.setup_key.key is defined
 
