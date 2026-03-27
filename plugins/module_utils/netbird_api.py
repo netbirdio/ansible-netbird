@@ -14,6 +14,19 @@ from ansible.module_utils.basic import env_fallback
 from ansible.module_utils.six.moves.urllib.error import HTTPError, URLError
 
 
+def extract_ids(items):
+    """Extract IDs from a list that may contain dicts or plain strings.
+
+    The NetBird API returns related objects as dicts (e.g.
+    ``[{"id": "abc", "name": "..."}]``) while module parameters are plain
+    ID strings.  This helper normalises both forms to a flat list of ID
+    strings so they can be safely compared with ``set()``.
+    """
+    if not items:
+        return []
+    return [item['id'] if isinstance(item, dict) else item for item in items]
+
+
 class NetBirdAPIError(Exception):
     """Exception raised for NetBird API errors."""
     def __init__(self, message, status_code=None, response=None):

@@ -116,6 +116,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -136,14 +137,8 @@ def group_needs_update(current, desired):
             return True
 
     if 'peers' in desired and desired['peers'] is not None:
-        # API returns peers as dicts [{"id": "...", "name": "..."}] or null;
-        # desired peers are plain ID strings from the module parameter.
-        raw_peers = current.get('peers') or []
-        if raw_peers and isinstance(raw_peers[0], dict):
-            current_peers = set(p['id'] for p in raw_peers)
-        else:
-            current_peers = set(raw_peers)
-        desired_peers = set(desired['peers'])
+        current_peers = set(extract_ids(current.get('peers') or []))
+        desired_peers = set(extract_ids(desired['peers'] or []))
         if current_peers != desired_peers:
             return True
 

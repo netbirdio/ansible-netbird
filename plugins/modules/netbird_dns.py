@@ -213,6 +213,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -239,8 +240,8 @@ def nsgroup_needs_update(current, params):
     
     # Check groups
     if params.get('groups') is not None:
-        current_groups = set(current.get('groups', []))
-        desired_groups = set(params['groups'])
+        current_groups = set(extract_ids(current.get('groups') or []))
+        desired_groups = set(extract_ids(params['groups'] or []))
         if current_groups != desired_groups:
             return True
     
@@ -299,8 +300,8 @@ def run_module():
             if state == 'present':
                 disabled_groups = module.params['disabled_management_groups']
                 if disabled_groups is not None:
-                    current_disabled = set(current_settings.get('disabled_management_groups', []))
-                    desired_disabled = set(disabled_groups)
+                    current_disabled = set(extract_ids(current_settings.get('disabled_management_groups') or []))
+                    desired_disabled = set(extract_ids(disabled_groups or []))
                     
                     if current_disabled != desired_disabled:
                         if not module.check_mode:
