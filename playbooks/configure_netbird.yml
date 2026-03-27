@@ -26,6 +26,6 @@
 - name: Configure NetBird from IaC Definitions
   hosts: "{{ target_hosts | default('localhost') }}"
   gather_facts: false
-  run_once: true
   roles:
-    - community.ansible_netbird.configure
+    - role: community.ansible_netbird.configure
+      run_once: true
