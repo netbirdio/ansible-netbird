@@ -318,8 +318,9 @@ def policy_needs_update(current, params):
     """Check if policy needs to be updated."""
     if params.get('name') is not None and current.get('name') != params['name']:
         return True
-    if params.get('description') is not None and current.get('description') != params['description']:
-        return True
+    if params.get('description') is not None:
+        if (current.get('description') or '') != (params['description'] or ''):
+            return True
     if params.get('enabled') is not None and current.get('enabled') != params['enabled']:
         return True
     if params.get('source_posture_checks') is not None:

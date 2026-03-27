@@ -224,15 +224,23 @@ def find_posture_check_by_name(api, name):
     return None
 
 
+def normalize_checks(checks):
+    """Normalize checks dict for comparison, removing None/null entries."""
+    if not checks:
+        return {}
+    return {k: v for k, v in checks.items() if v is not None}
+
+
 def posture_check_needs_update(current, params):
     """Check if posture check needs to be updated."""
     if params.get('name') is not None and current.get('name') != params['name']:
         return True
-    if params.get('description') is not None and current.get('description') != params['description']:
-        return True
-    # For checks, always update if provided to ensure they match exactly
+    if params.get('description') is not None:
+        if (current.get('description') or '') != (params['description'] or ''):
+            return True
     if params.get('checks') is not None:
-        return True
+        if normalize_checks(current.get('checks')) != normalize_checks(params['checks']):
+            return True
     return False
 
 
