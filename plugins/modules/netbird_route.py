@@ -181,6 +181,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -207,15 +208,15 @@ def route_needs_update(current, params):
     
     # Check peer_groups
     if params.get('peer_groups') is not None:
-        current_groups = set(current.get('peer_groups', []))
-        desired_groups = set(params['peer_groups'])
+        current_groups = set(extract_ids(current.get('peer_groups') or []))
+        desired_groups = set(extract_ids(params['peer_groups'] or []))
         if current_groups != desired_groups:
             return True
-    
+
     # Check groups
     if params.get('groups') is not None:
-        current_groups = set(current.get('groups', []))
-        desired_groups = set(params['groups'])
+        current_groups = set(extract_ids(current.get('groups') or []))
+        desired_groups = set(extract_ids(params['groups'] or []))
         if current_groups != desired_groups:
             return True
     

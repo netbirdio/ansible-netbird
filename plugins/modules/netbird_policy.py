@@ -233,6 +233,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -283,6 +284,36 @@ def build_rules_data(rules):
     return [build_rule_data(rule) for rule in rules]
 
 
+def normalize_rule(rule):
+    """Normalize a rule for comparison, extracting IDs from any dict references."""
+    return {
+        'name': rule.get('name', ''),
+        'description': rule.get('description', ''),
+        'enabled': rule.get('enabled', True),
+        'sources': sorted(extract_ids(rule.get('sources') or [])),
+        'destinations': sorted(extract_ids(rule.get('destinations') or [])),
+        'bidirectional': rule.get('bidirectional', True),
+        'protocol': rule.get('protocol', 'all'),
+        'ports': sorted(rule.get('ports') or []),
+        'action': rule.get('action', 'accept'),
+    }
+
+
+def rules_need_update(current_rules, desired_rules):
+    """Check if rules need to be updated by comparing normalized representations."""
+    current_rules = current_rules or []
+    desired_rules = desired_rules or []
+    if len(current_rules) != len(desired_rules):
+        return True
+    for current, desired in zip(
+        sorted(current_rules, key=lambda r: r.get('name', '')),
+        sorted(desired_rules, key=lambda r: r.get('name', ''))
+    ):
+        if normalize_rule(current) != normalize_rule(desired):
+            return True
+    return False
+
+
 def policy_needs_update(current, params):
     """Check if policy needs to be updated."""
     if params.get('name') is not None and current.get('name') != params['name']:
@@ -291,11 +322,14 @@ def policy_needs_update(current, params):
         return True
     if params.get('enabled') is not None and current.get('enabled') != params['enabled']:
         return True
-    if params.get('source_posture_checks') is not None and current.get('source_posture_checks') != params['source_posture_checks']:
-        return True
-    # For rules, always update if provided to ensure they match exactly
+    if params.get('source_posture_checks') is not None:
+        current_checks = set(extract_ids(current.get('source_posture_checks') or []))
+        desired_checks = set(extract_ids(params['source_posture_checks'] or []))
+        if current_checks != desired_checks:
+            return True
     if params.get('rules') is not None:
-        return True
+        if rules_need_update(current.get('rules'), params['rules']):
+            return True
     return False
 
 

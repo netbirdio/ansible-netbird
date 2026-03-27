@@ -318,6 +318,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -343,7 +344,7 @@ def network_needs_update(current, params):
 def get_router_key(router):
     """Generate a unique key for a router based on peer/peer_groups."""
     peer = router.get('peer', '')
-    peer_groups = tuple(sorted(router.get('peer_groups', []) or []))
+    peer_groups = tuple(sorted(extract_ids(router.get('peer_groups') or [])))
     return (peer, peer_groups)
 
 
@@ -366,8 +367,8 @@ def resource_needs_update(current, desired):
         return True
     if current.get('enabled', True) != desired.get('enabled', True):
         return True
-    current_groups = set(current.get('groups', []) or [])
-    desired_groups = set(desired.get('groups', []) or [])
+    current_groups = set(extract_ids(current.get('groups') or []))
+    desired_groups = set(extract_ids(desired.get('groups') or []))
     if current_groups != desired_groups:
         return True
     return False

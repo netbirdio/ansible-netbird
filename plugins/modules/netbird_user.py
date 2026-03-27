@@ -158,6 +158,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -188,8 +189,8 @@ def user_needs_update(current, desired):
                 return True
     
     if 'auto_groups' in desired and desired['auto_groups'] is not None:
-        current_groups = set(current.get('auto_groups', []))
-        desired_groups = set(desired['auto_groups'])
+        current_groups = set(extract_ids(current.get('auto_groups') or []))
+        desired_groups = set(extract_ids(desired['auto_groups'] or []))
         if current_groups != desired_groups:
             return True
     

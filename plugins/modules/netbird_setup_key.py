@@ -178,6 +178,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -198,8 +199,8 @@ def setup_key_needs_update(current, params):
     if params.get('revoked') is not None and current.get('revoked') != params['revoked']:
         return True
     if params.get('auto_groups') is not None:
-        current_groups = set(current.get('auto_groups', []))
-        desired_groups = set(params['auto_groups'])
+        current_groups = set(extract_ids(current.get('auto_groups') or []))
+        desired_groups = set(extract_ids(params['auto_groups'] or []))
         if current_groups != desired_groups:
             return True
     return False

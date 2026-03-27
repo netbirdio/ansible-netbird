@@ -168,6 +168,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     NetBirdAPI,
     NetBirdAPIError,
+    extract_ids,
     netbird_argument_spec
 )
 
@@ -192,8 +193,8 @@ def zone_needs_update(current, params):
     if params.get('enable_search_domain') is not None and current.get('enable_search_domain') != params['enable_search_domain']:
         return True
     if params.get('distribution_groups') is not None:
-        current_groups = set(current.get('distribution_groups', []) or [])
-        desired_groups = set(params['distribution_groups'] or [])
+        current_groups = set(extract_ids(current.get('distribution_groups') or []))
+        desired_groups = set(extract_ids(params['distribution_groups'] or []))
         if current_groups != desired_groups:
             return True
     return False
