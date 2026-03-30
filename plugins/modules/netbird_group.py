@@ -38,9 +38,9 @@ options:
   peers:
     description:
       - List of peer IDs to include in the group.
+      - When updating an existing group and this is not specified, the current peers are preserved.
     type: list
     elements: str
-    default: []
   resources:
     description:
       - List of resource objects for the group.
@@ -152,7 +152,7 @@ def run_module():
         state=dict(type='str', choices=['present', 'absent'], default='present'),
         group_id=dict(type='str'),
         name=dict(type='str'),
-        peers=dict(type='list', elements='str', default=[]),
+        peers=dict(type='list', elements='str'),
         resources=dict(type='list', elements='dict')
     )
 
@@ -204,18 +204,25 @@ def run_module():
 
         # state == 'present'
         if existing_group:
+            # Use existing values as fallback for fields the user didn't specify
+            effective_peers = peers if peers is not None else existing_group.get('peers', [])
+            # Normalize peers to list of IDs (API may return dicts with 'id' key)
+            effective_peer_ids = [
+                p['id'] if isinstance(p, dict) else p for p in (effective_peers or [])
+            ]
+
             # Check if update is needed
             desired = {
                 'name': name,
-                'peers': peers
+                'peers': effective_peer_ids
             }
-            
+
             if group_needs_update(existing_group, desired):
                 if not module.check_mode:
                     group, _ = api.update_group(
                         existing_group['id'],
                         name=name,
-                        peers=peers,
+                        peers=effective_peer_ids,
                         resources=resources
                     )
                     result['group'] = group
@@ -228,11 +235,11 @@ def run_module():
             # Create new group
             if not name:
                 module.fail_json(msg="name is required when creating a new group")
-            
+
             if not module.check_mode:
                 group, _ = api.create_group(
                     name=name,
-                    peers=peers,
+                    peers=peers or [],
                     resources=resources
                 )
                 result['group'] = group

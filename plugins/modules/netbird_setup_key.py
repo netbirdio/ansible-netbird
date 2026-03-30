@@ -57,9 +57,9 @@ options:
   auto_groups:
     description:
       - List of group IDs to auto-assign to peers registered with this key.
+      - When updating an existing key and this is not specified, the current auto_groups are preserved.
     type: list
     elements: str
-    default: []
   usage_limit:
     description:
       - Maximum number of times the key can be used.
@@ -216,7 +216,7 @@ def run_module():
         key_type=dict(type='str', choices=['one-off', 'reusable'], default='one-off'),
         expires_in=dict(type='int', default=86400),
         revoked=dict(type='bool', default=False),
-        auto_groups=dict(type='list', elements='str', default=[]),
+        auto_groups=dict(type='list', elements='str'),
         usage_limit=dict(type='int', default=0),
         ephemeral=dict(type='bool', default=False),
         allow_extra_dns_labels=dict(type='bool', default=False)
@@ -268,19 +268,24 @@ def run_module():
 
         # state == 'present'
         if existing_key:
+            # Use existing values as fallback for fields the user didn't specify
+            effective_auto_groups = module.params['auto_groups']
+            if effective_auto_groups is None:
+                effective_auto_groups = existing_key.get('auto_groups', [])
+
             # Check if update is needed
             update_params = {
                 'name': name,
                 'revoked': module.params['revoked'],
-                'auto_groups': module.params['auto_groups']
+                'auto_groups': effective_auto_groups
             }
-            
+
             if setup_key_needs_update(existing_key, update_params):
                 if not module.check_mode:
                     key, _ = api.update_setup_key(
                         existing_key['id'],
                         revoked=module.params['revoked'],
-                        auto_groups=module.params['auto_groups']
+                        auto_groups=effective_auto_groups
                     )
                     result['setup_key'] = key
                 else:
@@ -292,14 +297,14 @@ def run_module():
             # Create new setup key
             if not name:
                 module.fail_json(msg="name is required when creating a new setup key")
-            
+
             if not module.check_mode:
                 key, _ = api.create_setup_key(
                     name=name,
                     key_type=module.params['key_type'],
                     expires_in=module.params['expires_in'],
                     revoked=module.params['revoked'],
-                    auto_groups=module.params['auto_groups'],
+                    auto_groups=module.params['auto_groups'] or [],
                     usage_limit=module.params['usage_limit'],
                     ephemeral=module.params['ephemeral'],
                     allow_extra_dns_labels=module.params['allow_extra_dns_labels']

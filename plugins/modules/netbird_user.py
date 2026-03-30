@@ -47,9 +47,9 @@ options:
   auto_groups:
     description:
       - List of group IDs to auto-assign to peers registered by this user.
+      - When updating an existing user and this is not specified, the current auto_groups are preserved.
     type: list
     elements: str
-    default: []
   is_service_user:
     description:
       - Set to true if this user is a service user.
@@ -206,7 +206,7 @@ def run_module():
         email=dict(type='str'),
         name=dict(type='str'),
         role=dict(type='str', choices=['admin', 'user', 'owner', 'network_admin', 'auditor'], default='user'),
-        auto_groups=dict(type='list', elements='str', default=[]),
+        auto_groups=dict(type='list', elements='str'),
         is_service_user=dict(type='bool', default=False),
         is_blocked=dict(type='bool'),
         resend_invitation=dict(type='bool', default=False),
@@ -288,19 +288,22 @@ def run_module():
 
         # state == 'present'
         if existing_user:
+            # Use existing values as fallback for fields the user didn't specify
+            effective_auto_groups = auto_groups if auto_groups is not None else existing_user.get('auto_groups', [])
+
             # Check if update is needed
             desired = {
                 'role': role,
-                'auto_groups': auto_groups,
+                'auto_groups': effective_auto_groups,
                 'is_blocked': is_blocked
             }
-            
+
             if user_needs_update(existing_user, desired):
                 if not module.check_mode:
                     user, _ = api.update_user(
                         existing_user['id'],
                         role=role,
-                        auto_groups=auto_groups,
+                        auto_groups=effective_auto_groups,
                         is_blocked=is_blocked
                     )
                     result['user'] = user
@@ -313,13 +316,13 @@ def run_module():
             # Create new user
             if not is_service_user and not email:
                 module.fail_json(msg="email is required when creating a regular user")
-            
+
             if not module.check_mode:
                 user, _ = api.create_user(
                     email=email,
                     name=name,
                     role=role,
-                    auto_groups=auto_groups,
+                    auto_groups=auto_groups or [],
                     is_service_user=is_service_user
                 )
                 result['user'] = user

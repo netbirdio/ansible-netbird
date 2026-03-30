@@ -194,8 +194,28 @@ class NetBirdAPI:
         return None, 404
 
     def get_current_user(self):
-        """Get the current user."""
-        return self.get('/api/users/me')
+        """Get the current authenticated user.
+
+        The NetBird API does not have a dedicated /users/me endpoint.
+        Instead, we list all users and match by the 'is_current' flag.
+        Returns None if the current user cannot be identified.
+        """
+        users, status = self.list_users()
+        if not users:
+            return None, 404
+        if not isinstance(users, list):
+            return None, 404
+        for user in users:
+            if user.get('is_current', False):
+                return user, 200
+        # If only one user exists, it must be the current user
+        if len(users) == 1:
+            return users[0], 200
+        raise NetBirdAPIError(
+            "Cannot identify current user: no user has 'is_current' flag set "
+            "and multiple users exist. Use 'resource: users' instead.",
+            status_code=404
+        )
 
     def create_user(self, email=None, name=None, role=None, auto_groups=None, is_service_user=False):
         """Create a new user."""

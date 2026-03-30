@@ -217,9 +217,13 @@
         _resolved_setup_keys: >-
           {% set result = [] -%}
           {% for sk in netbird_setup_keys | default([]) -%}
-            {% set _ = result.append(sk | combine({
-              'auto_groups': sk.auto_groups | default([]) | map('extract', group_ids) | list
-            })) -%}
+            {% if sk.auto_groups is defined -%}
+              {% set _ = result.append(sk | combine({
+                'auto_groups': sk.auto_groups | map('extract', group_ids) | list
+              })) -%}
+            {% else -%}
+              {% set _ = result.append(sk) -%}
+            {% endif -%}
           {% endfor -%}
           {{ result | to_json | from_json }}
       when:
@@ -278,7 +282,7 @@
         key_type: "{{ item.key_type | default('one-off') }}"
         expires_in: "{{ item.expires_in | default(86400) }}"
         revoked: "{{ item.revoked | default(false) }}"
-        auto_groups: "{{ item.auto_groups | default([]) }}"
+        auto_groups: "{{ item.auto_groups | default(omit) }}"
         usage_limit: "{{ item.usage_limit | default(0) }}"
         ephemeral: "{{ item.ephemeral | default(false) }}"
         allow_extra_dns_labels: "{{ item.allow_extra_dns_labels | default(false) }}"
@@ -389,7 +393,16 @@
         domain: "{{ item.domain | default(omit) }}"
         enabled: "{{ item.enabled | default(true) }}"
         enable_search_domain: "{{ item.enable_search_domain | default(false) }}"
-        distribution_groups: "{{ item.distribution_groups | default([]) | map('extract', group_ids) | list }}"
+        distribution_groups: >-
+          {% set resolved = [] -%}
+          {% for g in (item.distribution_groups | default([])) -%}
+            {% if g in group_ids -%}
+              {% set _ = resolved.append(group_ids[g]) -%}
+            {% else -%}
+              {% set _ = resolved.append(g) -%}
+            {% endif -%}
+          {% endfor -%}
+          {{ resolved }}
         records: "{{ item.records | default(omit) }}"
         state: "{{ item.state | default('present') }}"
       loop: "{{ netbird_dns_zones | default([]) }}"
