@@ -115,7 +115,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_token_by_name(api, user_id, name):
     """Find a token by name for a specific user."""
     tokens, _ = api.list_tokens(user_id)
-    for token in tokens:
+    for token in (tokens or []):
         if token.get('name') == name:
             return token
     return None

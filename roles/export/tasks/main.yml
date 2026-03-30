@@ -135,11 +135,11 @@
         networks_enriched: >-
           {% set result = [] -%}
           {% for net in networks_data.data -%}
-            {% set routers = networks_routers_raw.results[loop.index0].get('json', []) -%}
-            {% set resources = networks_resources_raw.results[loop.index0].get('json', []) -%}
+            {% set routers = networks_routers_raw.results[loop.index0].json | default([]) -%}
+            {% set resources = networks_resources_raw.results[loop.index0].json | default([]) -%}
             {% set _ = result.append(net | combine({'routers': routers, 'resources': resources})) -%}
           {% endfor -%}
-          {{ result | to_json }}
+          {{ result | to_json | from_json }}
       when: networks_data.data | length > 0
 
     - name: Set empty enriched networks when none exist

@@ -12,6 +12,7 @@ import ssl
 from ansible.module_utils.urls import open_url
 from ansible.module_utils.basic import env_fallback
 from ansible.module_utils.six.moves.urllib.error import HTTPError, URLError
+from ansible.module_utils.six.moves.urllib.parse import urlencode
 
 
 def extract_ids(items):
@@ -75,9 +76,9 @@ class NetBirdAPI:
         url = f"{self.api_url}{endpoint}"
 
         if params:
-            query_string = '&'.join([f"{k}={v}" for k, v in params.items() if v is not None])
-            if query_string:
-                url = f"{url}?{query_string}"
+            filtered = {k: v for k, v in params.items() if v is not None}
+            if filtered:
+                url = f"{url}?{urlencode(filtered)}"
 
         body = None
         if data is not None:

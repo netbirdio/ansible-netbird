@@ -221,7 +221,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_nsgroup_by_name(api, name):
     """Find a nameserver group by name."""
     groups, _ = api.list_nameserver_groups()
-    for group in groups:
+    for group in (groups or []):
         if group.get('name') == name:
             return group
     return None

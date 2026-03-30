@@ -189,7 +189,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_route_by_network_id(api, network_id):
     """Find a route by network ID."""
     routes, _ = api.list_routes()
-    for route in routes:
+    for route in (routes or []):
         if route.get('network_id') == network_id:
             return route
     return None

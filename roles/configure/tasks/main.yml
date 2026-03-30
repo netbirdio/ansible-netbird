@@ -221,7 +221,7 @@
               'auto_groups': sk.auto_groups | default([]) | map('extract', group_ids) | list
             })) -%}
           {% endfor -%}
-          {{ result | to_json }}
+          {{ result | to_json | from_json }}
       when:
         - commit | bool
         - netbird_setup_keys | default([]) | length > 0
@@ -243,7 +243,7 @@
               'rules': resolved_rules
             })) -%}
           {% endfor -%}
-          {{ result | to_json }}
+          {{ result | to_json | from_json }}
         _resolved_networks: >-
           {% set result = [] -%}
           {% for network in netbird_networks | default([]) -%}
@@ -268,7 +268,7 @@
               'routers': resolved_routers
             })) -%}
           {% endfor -%}
-          {{ result | to_json }}
+          {{ result | to_json | from_json }}
       when: commit | bool
 
     # --- 4. Setup Keys (depend on groups for auto_groups) ---

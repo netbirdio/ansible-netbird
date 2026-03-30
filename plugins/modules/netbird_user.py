@@ -166,7 +166,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_user_by_email(api, email):
     """Find a user by email address."""
     users, _ = api.list_users()
-    for user in users:
+    for user in (users or []):
         if user.get('email') == email:
             return user
     return None
@@ -175,7 +175,7 @@ def find_user_by_email(api, email):
 def find_user_by_name(api, name, is_service_user=False):
     """Find a service user by name."""
     users, _ = api.list_users(service_user=is_service_user)
-    for user in users:
+    for user in (users or []):
         if user.get('name') == name:
             return user
     return None

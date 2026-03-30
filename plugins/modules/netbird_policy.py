@@ -241,7 +241,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_policy_by_name(api, name):
     """Find a policy by name."""
     policies, _ = api.list_policies()
-    for policy in policies:
+    for policy in (policies or []):
         if policy.get('name') == name:
             return policy
     return None

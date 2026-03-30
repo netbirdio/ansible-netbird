@@ -176,7 +176,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_zone_by_name(api, name):
     """Find a DNS zone by name."""
     zones, _ = api.list_dns_zones()
-    for zone in zones:
+    for zone in (zones or []):
         if zone.get('name') == name:
             return zone
     return None

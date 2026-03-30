@@ -186,7 +186,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_setup_key_by_name(api, name):
     """Find a setup key by name."""
     keys, _ = api.list_setup_keys()
-    for key in keys:
+    for key in (keys or []):
         if key.get('name') == name:
             return key
     return None

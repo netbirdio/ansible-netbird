@@ -326,7 +326,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_network_by_name(api, name):
     """Find a network by name."""
     networks, _ = api.list_networks()
-    for network in networks:
+    for network in (networks or []):
         if network.get('name') == name:
             return network
     return None
@@ -381,7 +381,7 @@ def sync_routers(api, module, network_id, desired_routers):
     
     # Get current routers
     current_routers, _ = api.list_network_routers(network_id)
-    current_by_key = {get_router_key(r): r for r in current_routers}
+    current_by_key = {get_router_key(r): r for r in (current_routers or [])}
     
     # Build desired routers map
     desired_by_key = {}
@@ -447,7 +447,7 @@ def sync_resources(api, module, network_id, desired_resources):
     
     # Get current resources
     current_resources, _ = api.list_network_resources(network_id)
-    current_by_address = {r.get('address'): r for r in current_resources}
+    current_by_address = {r.get('address'): r for r in (current_resources or [])}
     
     # Build desired resources map
     desired_by_address = {r['address']: r for r in desired_resources}

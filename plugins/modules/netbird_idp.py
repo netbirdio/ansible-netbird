@@ -137,7 +137,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_idp_by_name(api, name):
     """Find an identity provider by name."""
     idps, _ = api.list_identity_providers()
-    for idp in idps:
+    for idp in (idps or []):
         if idp.get('name') == name:
             return idp
     return None

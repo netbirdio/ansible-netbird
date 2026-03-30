@@ -155,7 +155,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def find_invite_by_email(api, email):
     """Find a user invite by email address."""
     invites, _ = api.list_user_invites()
-    for invite in invites:
+    for invite in (invites or []):
         if invite.get('email') == email:
             return invite
     return None
