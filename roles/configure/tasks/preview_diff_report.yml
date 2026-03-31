@@ -63,7 +63,7 @@
     diff_dns_data: "{{ netbird_dns_nameserver_groups | default([]) | community.ansible_netbird.netbird_diff(current_dns_map, 'dns', group_ids=group_ids) }}"
     diff_dz_data: "{{ netbird_dns_zones | default([]) | community.ansible_netbird.netbird_diff(current_dns_zones_map) }}"
     diff_net_data: "{{ netbird_networks | default([]) | community.ansible_netbird.netbird_diff(current_networks_enriched, 'network', peer_ids=peer_ids, peer_id_name=peer_id_name) }}"
-    diff_pol_data: "{{ netbird_policies | default([]) | community.ansible_netbird.netbird_diff(current_policies_map, 'policy') }}"
+    diff_pol_data: "{{ netbird_policies | default([]) | community.ansible_netbird.netbird_diff(current_policies_map, 'policy', group_id_name=group_id_name) }}"
 
 # =========================================================================
 # Format and display

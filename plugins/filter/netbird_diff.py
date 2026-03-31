@@ -154,8 +154,23 @@ def _compare_dns(current, desired, group_ids):
     return diffs
 
 
-def _compare_policy(current, desired):
+def _resolve_group_names(ids, group_id_name):
+    """Resolve a list of group IDs/dicts to sorted names."""
+    if not ids:
+        return []
+    names = []
+    for item in ids:
+        if isinstance(item, dict):
+            name = item.get('name', '') or group_id_name.get(item.get('id', ''), item.get('id', ''))
+        else:
+            name = group_id_name.get(item, item)
+        names.append(name)
+    return sorted(names)
+
+
+def _compare_policy(current, desired, group_id_name=None):
     """Compare a single policy and return list of change descriptions."""
+    group_id_name = group_id_name or {}
     diffs = []
 
     if (current.get('description') or '') != (desired.get('description') or ''):
@@ -164,10 +179,44 @@ def _compare_policy(current, desired):
     if bool(current.get('enabled', True)) != bool(desired.get('enabled', True)):
         diffs.append('enabled: {0} \u2192 {1}'.format(current.get('enabled', True), desired.get('enabled', True)))
 
-    cur_rules = len(current.get('rules') or [])
-    des_rules = len(desired.get('rules') or [])
-    if cur_rules != des_rules:
-        diffs.append('rules: {0} \u2192 {1}'.format(cur_rules, des_rules))
+    cur_rules = current.get('rules') or []
+    des_rules = desired.get('rules') or []
+
+    if len(cur_rules) != len(des_rules):
+        diffs.append('rules count: {0} \u2192 {1}'.format(len(cur_rules), len(des_rules)))
+
+    # Compare rules pairwise (by position)
+    for i, (cr, dr) in enumerate(zip(cur_rules, des_rules)):
+        label = dr.get('name', '') or cr.get('name', '') or 'rule-{0}'.format(i + 1)
+
+        cur_src = _resolve_group_names(cr.get('sources') or [], group_id_name)
+        des_src = sorted(dr.get('sources') or [])
+        if cur_src != des_src:
+            diffs.append('rule[{0}]: sources {1} \u2192 {2}'.format(label, cur_src, des_src))
+
+        cur_dst = _resolve_group_names(cr.get('destinations') or [], group_id_name)
+        des_dst = sorted(dr.get('destinations') or [])
+        if cur_dst != des_dst:
+            diffs.append('rule[{0}]: destinations {1} \u2192 {2}'.format(label, cur_dst, des_dst))
+
+        if (cr.get('protocol') or 'all') != (dr.get('protocol') or 'all'):
+            diffs.append('rule[{0}]: protocol {1} \u2192 {2}'.format(label, cr.get('protocol', 'all'), dr.get('protocol', 'all')))
+
+        if bool(cr.get('bidirectional', False)) != bool(dr.get('bidirectional', False)):
+            diffs.append('rule[{0}]: bidirectional {1} \u2192 {2}'.format(label, cr.get('bidirectional', False), dr.get('bidirectional', False)))
+
+        if bool(cr.get('enabled', True)) != bool(dr.get('enabled', True)):
+            diffs.append('rule[{0}]: enabled {1} \u2192 {2}'.format(label, cr.get('enabled', True), dr.get('enabled', True)))
+
+        cur_action = cr.get('action') or 'accept'
+        des_action = dr.get('action') or 'accept'
+        if cur_action != des_action:
+            diffs.append('rule[{0}]: action {1} \u2192 {2}'.format(label, cur_action, des_action))
+
+        cur_ports = sorted(cr.get('ports') or [])
+        des_ports = sorted(dr.get('ports') or [])
+        if cur_ports != des_ports:
+            diffs.append('rule[{0}]: ports changed'.format(label))
 
     return diffs
 
@@ -192,6 +241,7 @@ def netbird_diff(desired_list, current_map, resource_type='simple', **kwargs):
     peer_ids = kwargs.get('peer_ids') or {}
     peer_id_name = kwargs.get('peer_id_name') or {}
     group_ids = kwargs.get('group_ids') or {}
+    group_id_name = kwargs.get('group_id_name') or {}
     protected = kwargs.get('protected') or []
 
     present_names, remove_names, orphaned = _classify(desired_list, current_map, protected)
@@ -215,7 +265,7 @@ def netbird_diff(desired_list, current_map, resource_type='simple', **kwargs):
         elif resource_type == 'dns':
             diffs = _compare_dns(current, desired, group_ids)
         elif resource_type == 'policy':
-            diffs = _compare_policy(current, desired)
+            diffs = _compare_policy(current, desired, group_id_name)
         else:
             diffs = []
 
