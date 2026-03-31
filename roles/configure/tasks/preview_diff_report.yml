@@ -53,19 +53,6 @@
     _protected_groups: "{{ api_groups.data | selectattr('issued', 'defined') | selectattr('issued', 'equalto', 'jwt') | map(attribute='name') | list + ['All'] }}"
 
 # =========================================================================
-# DEBUG: Show raw router data for first network (TEMPORARY - remove after debugging)
-# =========================================================================
-- name: "DEBUG: Show router data for failing network"
-  ansible.builtin.debug:
-    msg:
-      - "Network: Red Hat DNS - NASA"
-      - "Enriched routers: {{ current_networks_enriched['Red Hat DNS - NASA'].routers | default('MISSING') }}"
-      - "peer_ids has headnet01-iad2: {{ 'headnet01-iad2' in peer_ids }}"
-      - "peer_ids[headnet01-iad2]: {{ peer_ids.get('headnet01-iad2', 'NOT FOUND') }}"
-      - "Desired routers: {{ (netbird_networks | selectattr('name', 'eq', 'Red Hat DNS - NASA') | first).routers | default('MISSING') }}"
-  when: "'Red Hat DNS - NASA' in current_networks_enriched"
-
-# =========================================================================
 # Compute diffs using filter plugin
 # =========================================================================
 - name: Compute all resource diffs

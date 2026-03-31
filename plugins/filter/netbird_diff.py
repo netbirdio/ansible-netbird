@@ -48,6 +48,26 @@ def _classify(desired_list, current_map, protected=None):
     return present_names, remove_names, orphaned
 
 
+def _resolve_peer_name(peer_value, peer_ids, peer_id_name):
+    """Resolve a peer field value (UUID or name) to a human-readable name.
+
+    The API may store peer as a UUID or as a name (legacy data created
+    before name-to-ID resolution was added). This handles both cases.
+    """
+    if not peer_value:
+        return ''
+    peer_id = _extract_peer_id(peer_value)
+    # UUID → name via reverse map
+    name = peer_id_name.get(peer_id, '')
+    if name:
+        return name
+    # Already a name (exists as a key in name→ID map)
+    if peer_id in peer_ids:
+        return peer_id
+    # Unknown — return as-is
+    return peer_id
+
+
 def _compare_network(current, desired, peer_ids, peer_id_name):
     """Compare a single network (including routers) and return list of change descriptions."""
     diffs = []
@@ -58,38 +78,26 @@ def _compare_network(current, desired, peer_ids, peer_id_name):
     if cur_desc != des_desc:
         diffs.append('description: "{0}" \u2192 "{1}"'.format(cur_desc, des_desc))
 
-    # Routers
+    # Routers — match by resolved peer name (handles both UUID and name in API)
     current_routers = current.get('routers') or []
     desired_routers = desired.get('routers') or []
 
-    # Index current routers by peer ID and by resolved peer name
-    cr_by_peer = {}
-    cr_by_name = {}
+    cr_by_label = {}
     for cr in current_routers:
-        cr_peer = _extract_peer_id(cr.get('peer'))
-        if cr_peer:
-            cr_by_peer[cr_peer] = cr
-            cr_name = peer_id_name.get(cr_peer, '')
-            if cr_name:
-                cr_by_name[cr_name] = (cr, cr_peer)
+        label = _resolve_peer_name(cr.get('peer'), peer_ids, peer_id_name)
+        if not label and cr.get('peer_groups'):
+            label = 'peer_groups'
+        cr_by_label[label] = cr
 
-    matched_peers = set()
+    matched = set()
     for dr in desired_routers:
-        dr_peer_name = dr.get('peer') or ''
-        dr_peer_id = peer_ids.get(dr_peer_name, dr_peer_name)
-        label = dr_peer_name or 'peer_groups'
+        label = dr.get('peer') or ''
+        if not label and dr.get('peer_groups'):
+            label = 'peer_groups'
 
-        # Match by peer ID first, fall back to peer name
-        cr = None
-        matched_key = None
-        if dr_peer_id in cr_by_peer:
-            cr = cr_by_peer[dr_peer_id]
-            matched_key = dr_peer_id
-        elif dr_peer_name and dr_peer_name in cr_by_name:
-            cr, matched_key = cr_by_name[dr_peer_name]
-
-        if cr is not None:
-            matched_peers.add(matched_key)
+        if label in cr_by_label:
+            cr = cr_by_label[label]
+            matched.add(label)
 
             cr_metric = int(cr.get('metric') or 9999)
             dr_metric = int(dr.get('metric') or 9999)
@@ -108,10 +116,9 @@ def _compare_network(current, desired, peer_ids, peer_id_name):
         else:
             diffs.append('router[{0}]: + NEW'.format(label))
 
-    for cr_peer_id in cr_by_peer:
-        if cr_peer_id not in matched_peers:
-            cr_name = peer_id_name.get(cr_peer_id, cr_peer_id)
-            diffs.append('router[{0}]: - REMOVED'.format(cr_name))
+    for label in cr_by_label:
+        if label not in matched:
+            diffs.append('router[{0}]: - REMOVED'.format(label))
 
     return diffs
 
