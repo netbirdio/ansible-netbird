@@ -225,15 +225,15 @@
     # =====================================================================
     - name: Resolve auto_groups in setup keys
       ansible.builtin.set_fact:
-        _resolved_setup_keys: "{{ netbird_setup_keys | default([]) | netbird_resolve_ids('setup_key', group_ids=group_ids) }}"
+        _resolved_setup_keys: "{{ netbird_setup_keys | default([]) | community.ansible_netbird.netbird_resolve_ids('setup_key', group_ids=group_ids) }}"
       when:
         - commit | bool
         - netbird_setup_keys | default([]) | length > 0
 
     - name: Resolve group/peer/posture-check names to IDs
       ansible.builtin.set_fact:
-        _resolved_policies: "{{ netbird_policies | default([]) | netbird_resolve_ids('policy', group_ids=group_ids, posture_check_ids=posture_check_ids) }}"
-        _resolved_networks: "{{ netbird_networks | default([]) | netbird_resolve_ids('network', group_ids=group_ids, peer_ids=peer_ids) }}"
+        _resolved_policies: "{{ netbird_policies | default([]) | community.ansible_netbird.netbird_resolve_ids('policy', group_ids=group_ids, posture_check_ids=posture_check_ids) }}"
+        _resolved_networks: "{{ netbird_networks | default([]) | community.ansible_netbird.netbird_resolve_ids('network', group_ids=group_ids, peer_ids=peer_ids) }}"
       when: commit | bool
 
     # --- 4. Setup Keys (depend on groups for auto_groups) ---
@@ -371,7 +371,7 @@
         domain: "{{ item.domain | default(omit) }}"
         enabled: "{{ item.enabled | default(true) }}"
         enable_search_domain: "{{ item.enable_search_domain | default(false) }}"
-        distribution_groups: "{{ item.distribution_groups | default([]) | netbird_resolve_names(group_ids) }}"
+        distribution_groups: "{{ item.distribution_groups | default([]) | community.ansible_netbird.netbird_resolve_names(group_ids) }}"
         records: "{{ item.records | default(omit) }}"
         state: "{{ item.state | default('present') }}"
       loop: "{{ netbird_dns_zones | default([]) }}"

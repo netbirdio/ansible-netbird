@@ -57,13 +57,13 @@
 # =========================================================================
 - name: Compute all resource diffs
   ansible.builtin.set_fact:
-    diff_groups_data: "{{ netbird_groups | default([]) | netbird_diff(current_groups_map, 'simple', protected=_protected_groups) }}"
-    diff_pc_data: "{{ netbird_posture_checks | default([]) | netbird_diff(current_posture_checks_map) }}"
-    diff_sk_data: "{{ netbird_setup_keys | default([]) | netbird_diff(current_setup_keys_map) }}"
-    diff_dns_data: "{{ netbird_dns_nameserver_groups | default([]) | netbird_diff(current_dns_map, 'dns', group_ids=group_ids) }}"
-    diff_dz_data: "{{ netbird_dns_zones | default([]) | netbird_diff(current_dns_zones_map) }}"
-    diff_net_data: "{{ netbird_networks | default([]) | netbird_diff(current_networks_enriched, 'network', peer_ids=peer_ids, peer_id_name=peer_id_name) }}"
-    diff_pol_data: "{{ netbird_policies | default([]) | netbird_diff(current_policies_map, 'policy') }}"
+    diff_groups_data: "{{ netbird_groups | default([]) | community.ansible_netbird.netbird_diff(current_groups_map, 'simple', protected=_protected_groups) }}"
+    diff_pc_data: "{{ netbird_posture_checks | default([]) | community.ansible_netbird.netbird_diff(current_posture_checks_map) }}"
+    diff_sk_data: "{{ netbird_setup_keys | default([]) | community.ansible_netbird.netbird_diff(current_setup_keys_map) }}"
+    diff_dns_data: "{{ netbird_dns_nameserver_groups | default([]) | community.ansible_netbird.netbird_diff(current_dns_map, 'dns', group_ids=group_ids) }}"
+    diff_dz_data: "{{ netbird_dns_zones | default([]) | community.ansible_netbird.netbird_diff(current_dns_zones_map) }}"
+    diff_net_data: "{{ netbird_networks | default([]) | community.ansible_netbird.netbird_diff(current_networks_enriched, 'network', peer_ids=peer_ids, peer_id_name=peer_id_name) }}"
+    diff_pol_data: "{{ netbird_policies | default([]) | community.ansible_netbird.netbird_diff(current_policies_map, 'policy') }}"
 
 # =========================================================================
 # Format and display
@@ -78,13 +78,13 @@
   ansible.builtin.debug:
     msg: >-
       {{ diff_account + ['']
-        + diff_pc_data | netbird_format_diff('Posture Checks') + ['']
-        + diff_groups_data | netbird_format_diff('Groups') + ['']
-        + diff_sk_data | netbird_format_diff('Setup Keys') + ['']
-        + diff_dns_data | netbird_format_diff('DNS Nameserver Groups') + ['']
-        + diff_dz_data | netbird_format_diff('DNS Zones') + ['']
-        + diff_net_data | netbird_format_diff('Networks') + ['']
-        + diff_pol_data | netbird_format_diff('Policies') }}
+        + diff_pc_data | community.ansible_netbird.netbird_format_diff('Posture Checks') + ['']
+        + diff_groups_data | community.ansible_netbird.netbird_format_diff('Groups') + ['']
+        + diff_sk_data | community.ansible_netbird.netbird_format_diff('Setup Keys') + ['']
+        + diff_dns_data | community.ansible_netbird.netbird_format_diff('DNS Nameserver Groups') + ['']
+        + diff_dz_data | community.ansible_netbird.netbird_format_diff('DNS Zones') + ['']
+        + diff_net_data | community.ansible_netbird.netbird_format_diff('Networks') + ['']
+        + diff_pol_data | community.ansible_netbird.netbird_format_diff('Policies') }}
 
 # =========================================================================
 # Summary
