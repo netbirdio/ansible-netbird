@@ -62,10 +62,16 @@ def _compare_network(current, desired, peer_ids, peer_id_name):
     current_routers = current.get('routers') or []
     desired_routers = desired.get('routers') or []
 
+    # Index current routers by peer ID and by resolved peer name
     cr_by_peer = {}
+    cr_by_name = {}
     for cr in current_routers:
         cr_peer = _extract_peer_id(cr.get('peer'))
-        cr_by_peer[cr_peer] = cr
+        if cr_peer:
+            cr_by_peer[cr_peer] = cr
+            cr_name = peer_id_name.get(cr_peer, '')
+            if cr_name:
+                cr_by_name[cr_name] = (cr, cr_peer)
 
     matched_peers = set()
     for dr in desired_routers:
@@ -73,9 +79,17 @@ def _compare_network(current, desired, peer_ids, peer_id_name):
         dr_peer_id = peer_ids.get(dr_peer_name, dr_peer_name)
         label = dr_peer_name or 'peer_groups'
 
+        # Match by peer ID first, fall back to peer name
+        cr = None
+        matched_key = None
         if dr_peer_id in cr_by_peer:
             cr = cr_by_peer[dr_peer_id]
-            matched_peers.add(dr_peer_id)
+            matched_key = dr_peer_id
+        elif dr_peer_name and dr_peer_name in cr_by_name:
+            cr, matched_key = cr_by_name[dr_peer_name]
+
+        if cr is not None:
+            matched_peers.add(matched_key)
 
             cr_metric = int(cr.get('metric') or 9999)
             dr_metric = int(dr.get('metric') or 9999)
