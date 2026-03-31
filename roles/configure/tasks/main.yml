@@ -184,6 +184,7 @@
       ansible.builtin.set_fact:
         group_ids: {}
         posture_check_ids: {}
+        peer_ids: {}
 
     - name: Fetch current groups for ID resolution
       community.ansible_netbird.netbird_info:
@@ -203,11 +204,21 @@
       ansible.builtin.set_fact:
         posture_check_ids: "{{ dict(api_posture_checks.data | map(attribute='name') | zip(api_posture_checks.data | map(attribute='id'))) }}"
 
+    - name: Fetch current peers for ID resolution
+      community.ansible_netbird.netbird_info:
+        resource: peers
+      register: api_peers
+
+    - name: Build peer name→ID map
+      ansible.builtin.set_fact:
+        peer_ids: "{{ dict(api_peers.data | map(attribute='name') | zip(api_peers.data | map(attribute='id'))) }}"
+
     - name: Display ID maps
       ansible.builtin.debug:
         msg:
           - "Group IDs resolved: {{ group_ids | length }} groups"
           - "Posture check IDs resolved: {{ posture_check_ids | length }} checks"
+          - "Peer IDs resolved: {{ peer_ids | length }} peers"
 
     # =====================================================================
     # Resolve group/posture-check names to IDs in config variables
@@ -255,13 +266,14 @@
             {% endfor -%}
             {% set resolved_routers = [] -%}
             {% for router in network.routers | default([]) -%}
-              {% if router.peer_groups is defined -%}
-                {% set _ = resolved_routers.append(router | combine({
-                  'peer_groups': router.peer_groups | map('extract', group_ids) | list
-                })) -%}
-              {% else -%}
-                {% set _ = resolved_routers.append(router) -%}
+              {% set router_update = {} -%}
+              {% if router.peer is defined -%}
+                {% set _ = router_update.update({'peer': peer_ids[router.peer] if router.peer in peer_ids else router.peer}) -%}
               {% endif -%}
+              {% if router.peer_groups is defined -%}
+                {% set _ = router_update.update({'peer_groups': router.peer_groups | map('extract', group_ids) | list}) -%}
+              {% endif -%}
+              {% set _ = resolved_routers.append(router | combine(router_update)) -%}
             {% endfor -%}
             {% set _ = result.append(network | combine({
               'resources': resolved_resources,
