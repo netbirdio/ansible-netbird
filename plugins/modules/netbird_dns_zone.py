@@ -220,7 +220,7 @@ def sync_records(api, module, zone_id, desired_records):
 
     # Get current records
     current_records, _ = api.list_dns_zone_records(zone_id)
-    current_by_key = {get_record_key(r): r for r in current_records}
+    current_by_key = {get_record_key(r): r for r in (current_records or [])}
 
     # Build desired records map
     desired_by_key = {}
