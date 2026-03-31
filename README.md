@@ -51,6 +51,8 @@ ansible-galaxy collection install community-ansible_netbird-*.tar.gz
 
 All modules require API authentication. You can provide credentials in three ways:
 
+> **Note:** `api_url` is the base URL of your NetBird instance (e.g., `https://netbird.example.com`). Do not include `/api` — the collection appends API paths automatically. A trailing slash is stripped automatically.
+
 ### 1. Module Parameters
 
 ```yaml
@@ -89,7 +91,7 @@ export NETBIRD_API_TOKEN="your-personal-access-token"
 
 ### netbird_user
 
-Manage NetBird users (regular and service users).
+Manage NetBird users (regular and service users). When updating an existing user, omitting `auto_groups` preserves the current group assignments rather than clearing them.
 
 ```yaml
 # Create a regular user
@@ -117,7 +119,7 @@ Manage NetBird users (regular and service users).
 
 ### netbird_group
 
-Manage NetBird groups.
+Manage NetBird groups. When updating an existing group, omitting `peers` preserves the current peer membership rather than clearing it.
 
 ```yaml
 - name: Create a group
@@ -128,6 +130,15 @@ Manage NetBird groups.
     peers:
       - "peer-id-1"
       - "peer-id-2"
+    state: present
+
+# Update name only -- peers are preserved
+- name: Rename group without affecting peers
+  community.ansible_netbird.netbird_group:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    group_id: "{{ group.id }}"
+    name: "prod-servers"
     state: present
 ```
 
@@ -149,7 +160,7 @@ Manage NetBird peer settings.
 
 ### netbird_setup_key
 
-Manage NetBird setup keys for peer enrollment.
+Manage NetBird setup keys for peer enrollment. When updating an existing key, omitting `auto_groups` preserves the current group assignments rather than clearing them.
 
 ```yaml
 - name: Create reusable setup key
@@ -169,6 +180,15 @@ Manage NetBird setup keys for peer enrollment.
   debug:
     msg: "Setup key: {{ setup_key.setup_key.key }}"
   when: setup_key.changed
+
+# Revoke a key without wiping its auto_groups
+- name: Revoke setup key (auto_groups preserved)
+  community.ansible_netbird.netbird_setup_key:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    key_id: "{{ setup_key.setup_key.id }}"
+    revoked: true
+    state: present
 ```
 
 ### netbird_policy
