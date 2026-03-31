@@ -225,66 +225,15 @@
     # =====================================================================
     - name: Resolve auto_groups in setup keys
       ansible.builtin.set_fact:
-        _resolved_setup_keys: >-
-          {% set result = [] -%}
-          {% for sk in netbird_setup_keys | default([]) -%}
-            {% if sk.auto_groups is defined -%}
-              {% set _ = result.append(sk | combine({
-                'auto_groups': sk.auto_groups | map('extract', group_ids) | list
-              })) -%}
-            {% else -%}
-              {% set _ = result.append(sk) -%}
-            {% endif -%}
-          {% endfor -%}
-          {{ result | to_json | from_json }}
+        _resolved_setup_keys: "{{ netbird_setup_keys | default([]) | netbird_resolve_ids('setup_key', group_ids=group_ids) }}"
       when:
         - commit | bool
         - netbird_setup_keys | default([]) | length > 0
 
-    - name: Resolve group names in policies and networks
+    - name: Resolve group/peer/posture-check names to IDs
       ansible.builtin.set_fact:
-        _resolved_policies: >-
-          {% set result = [] -%}
-          {% for policy in netbird_policies | default([]) -%}
-            {% set resolved_rules = [] -%}
-            {% for rule in policy.rules | default([]) -%}
-              {% set _ = resolved_rules.append(rule | combine({
-                'sources': rule.sources | default([]) | map('extract', group_ids) | list,
-                'destinations': rule.destinations | default([]) | map('extract', group_ids) | list
-              })) -%}
-            {% endfor -%}
-            {% set _ = result.append(policy | combine({
-              'source_posture_checks': policy.source_posture_checks | default([]) | map('extract', posture_check_ids) | list,
-              'rules': resolved_rules
-            })) -%}
-          {% endfor -%}
-          {{ result | to_json | from_json }}
-        _resolved_networks: >-
-          {% set result = [] -%}
-          {% for network in netbird_networks | default([]) -%}
-            {% set resolved_resources = [] -%}
-            {% for resource in network.resources | default([]) -%}
-              {% set _ = resolved_resources.append(resource | combine({
-                'groups': resource.groups | default([]) | map('extract', group_ids) | list
-              })) -%}
-            {% endfor -%}
-            {% set resolved_routers = [] -%}
-            {% for router in network.routers | default([]) -%}
-              {% set router_update = {} -%}
-              {% if router.peer is defined -%}
-                {% set _ = router_update.update({'peer': peer_ids[router.peer] if router.peer in peer_ids else router.peer}) -%}
-              {% endif -%}
-              {% if router.peer_groups is defined -%}
-                {% set _ = router_update.update({'peer_groups': router.peer_groups | map('extract', group_ids) | list}) -%}
-              {% endif -%}
-              {% set _ = resolved_routers.append(router | combine(router_update)) -%}
-            {% endfor -%}
-            {% set _ = result.append(network | combine({
-              'resources': resolved_resources,
-              'routers': resolved_routers
-            })) -%}
-          {% endfor -%}
-          {{ result | to_json | from_json }}
+        _resolved_policies: "{{ netbird_policies | default([]) | netbird_resolve_ids('policy', group_ids=group_ids, posture_check_ids=posture_check_ids) }}"
+        _resolved_networks: "{{ netbird_networks | default([]) | netbird_resolve_ids('network', group_ids=group_ids, peer_ids=peer_ids) }}"
       when: commit | bool
 
     # --- 4. Setup Keys (depend on groups for auto_groups) ---
@@ -422,16 +371,7 @@
         domain: "{{ item.domain | default(omit) }}"
         enabled: "{{ item.enabled | default(true) }}"
         enable_search_domain: "{{ item.enable_search_domain | default(false) }}"
-        distribution_groups: >-
-          {% set resolved = [] -%}
-          {% for g in (item.distribution_groups | default([])) -%}
-            {% if g in group_ids -%}
-              {% set _ = resolved.append(group_ids[g]) -%}
-            {% else -%}
-              {% set _ = resolved.append(g) -%}
-            {% endif -%}
-          {% endfor -%}
-          {{ resolved }}
+        distribution_groups: "{{ item.distribution_groups | default([]) | netbird_resolve_names(group_ids) }}"
         records: "{{ item.records | default(omit) }}"
         state: "{{ item.state | default('present') }}"
       loop: "{{ netbird_dns_zones | default([]) }}"

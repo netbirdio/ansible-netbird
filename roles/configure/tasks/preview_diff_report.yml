@@ -2,17 +2,7 @@
 # tasks/preview_diff_report.yml — Compute and display configuration diff report
 #
 # Included by the configure role when commit=false (default).
-# Shows which resources will be added, removed, or changed with field-level details.
-#
-# Expects these variables to be set by the parent role:
-#   - api_groups, api_posture_checks, api_setup_keys, api_dns_nameservers,
-#     api_dns_zones, api_networks, api_policies, api_accounts, api_peers
-#     (registered from netbird_info)
-#   - preview_network_routers (registered from uri calls)
-#   - netbird_groups, netbird_posture_checks, netbird_setup_keys,
-#     netbird_dns_nameserver_groups, netbird_dns_zones, netbird_networks,
-#     netbird_policies, netbird_settings (desired config from include_vars)
-#   - netbird_api_url, config_dir, group_ids, peer_ids
+# Uses the netbird_diff and netbird_format_diff filter plugins for comparison.
 
 - name: Display preview header
   ansible.builtin.debug:
@@ -25,7 +15,7 @@
       - "══════════════════════════════════════════════════════════════"
 
 # =========================================================================
-# Build name-indexed maps of current API state
+# Build lookup maps
 # =========================================================================
 - name: Index current resources by name
   ansible.builtin.set_fact:
@@ -37,16 +27,13 @@
     current_networks_map: "{{ dict(api_networks.data | map(attribute='name') | zip(api_networks.data)) }}"
     current_policies_map: "{{ dict(api_policies.data | map(attribute='name') | zip(api_policies.data)) }}"
 
-# =========================================================================
-# Build reverse ID→name maps for diff display
-# =========================================================================
 - name: Build reverse lookup maps
   ansible.builtin.set_fact:
     peer_id_name: "{{ dict(api_peers.data | default([]) | map(attribute='id') | zip(api_peers.data | default([]) | map(attribute='name'))) }}"
     group_id_name: "{{ dict(api_groups.data | default([]) | map(attribute='id') | zip(api_groups.data | default([]) | map(attribute='name'))) }}"
 
 # =========================================================================
-# Enrich current networks with router data
+# Enrich network data with routers
 # =========================================================================
 - name: Build enriched current networks (with routers)
   ansible.builtin.set_fact:
@@ -59,406 +46,58 @@
       {{ result | to_json | from_json }}
 
 # =========================================================================
-# Classify resources: new / existing / remove
-# =========================================================================
-
-- name: Classify groups
-  ansible.builtin.set_fact:
-    groups_new: >-
-      {{ (netbird_groups | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_groups_map.keys() | list) }}
-    groups_existing: >-
-      {{ (netbird_groups | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_groups_map.keys() | list) }}
-    groups_remove: >-
-      {{ netbird_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_groups_map.keys() | list) }}
-
-- name: Classify posture checks
-  ansible.builtin.set_fact:
-    pc_new: >-
-      {{ (netbird_posture_checks | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_posture_checks | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_posture_checks_map.keys() | list) }}
-    pc_existing: >-
-      {{ (netbird_posture_checks | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_posture_checks | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_posture_checks_map.keys() | list) }}
-    pc_remove: >-
-      {{ netbird_posture_checks | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_posture_checks_map.keys() | list) }}
-
-- name: Classify setup keys
-  ansible.builtin.set_fact:
-    sk_new: >-
-      {{ (netbird_setup_keys | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_setup_keys | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_setup_keys_map.keys() | list) }}
-    sk_existing: >-
-      {{ (netbird_setup_keys | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_setup_keys | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_setup_keys_map.keys() | list) }}
-    sk_remove: >-
-      {{ netbird_setup_keys | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_setup_keys_map.keys() | list) }}
-
-- name: Classify DNS nameserver groups
-  ansible.builtin.set_fact:
-    dns_new: >-
-      {{ (netbird_dns_nameserver_groups | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_dns_nameserver_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_dns_map.keys() | list) }}
-    dns_existing: >-
-      {{ (netbird_dns_nameserver_groups | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_dns_nameserver_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_dns_map.keys() | list) }}
-    dns_remove: >-
-      {{ netbird_dns_nameserver_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_dns_map.keys() | list) }}
-
-- name: Classify DNS zones
-  ansible.builtin.set_fact:
-    dz_new: >-
-      {{ (netbird_dns_zones | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_dns_zones | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_dns_zones_map.keys() | list) }}
-    dz_existing: >-
-      {{ (netbird_dns_zones | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_dns_zones | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_dns_zones_map.keys() | list) }}
-    dz_remove: >-
-      {{ netbird_dns_zones | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_dns_zones_map.keys() | list) }}
-
-- name: Classify networks
-  ansible.builtin.set_fact:
-    net_new: >-
-      {{ (netbird_networks | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_networks | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_networks_map.keys() | list) }}
-    net_existing: >-
-      {{ (netbird_networks | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_networks | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_networks_map.keys() | list) }}
-    net_remove: >-
-      {{ netbird_networks | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_networks_map.keys() | list) }}
-
-- name: Classify policies
-  ansible.builtin.set_fact:
-    pol_new: >-
-      {{ (netbird_policies | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_policies | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | difference(current_policies_map.keys() | list) }}
-    pol_existing: >-
-      {{ (netbird_policies | default([]) | rejectattr('state', 'defined') | map(attribute='name') | list
-        + netbird_policies | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | map(attribute='name') | list)
-        | intersect(current_policies_map.keys() | list) }}
-    pol_remove: >-
-      {{ netbird_policies | default([]) | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | map(attribute='name') | list
-        | intersect(current_policies_map.keys() | list) }}
-
-# =========================================================================
-# Classify orphaned resources (strict mode only)
+# Build protected groups list (JWT + All)
 # =========================================================================
 - name: Build protected group names
   ansible.builtin.set_fact:
     _protected_groups: "{{ api_groups.data | selectattr('issued', 'defined') | selectattr('issued', 'equalto', 'jwt') | map(attribute='name') | list + ['All'] }}"
 
-- name: Classify orphaned resources (always computed for visibility)
+# =========================================================================
+# Compute diffs using filter plugin
+# =========================================================================
+- name: Compute all resource diffs
   ansible.builtin.set_fact:
-    groups_orphaned: "{{ current_groups_map.keys() | list | difference(netbird_groups | default([]) | map(attribute='name') | list) | difference(_protected_groups) }}"
-    pc_orphaned: "{{ current_posture_checks_map.keys() | list | difference(netbird_posture_checks | default([]) | map(attribute='name') | list) }}"
-    sk_orphaned: "{{ current_setup_keys_map.keys() | list | difference(netbird_setup_keys | default([]) | map(attribute='name') | list) }}"
-    dns_orphaned: "{{ current_dns_map.keys() | list | difference(netbird_dns_nameserver_groups | default([]) | map(attribute='name') | list) }}"
-    dz_orphaned: "{{ current_dns_zones_map.keys() | list | difference(netbird_dns_zones | default([]) | map(attribute='name') | list) }}"
-    net_orphaned: "{{ current_networks_map.keys() | list | difference(netbird_networks | default([]) | map(attribute='name') | list) }}"
-    pol_orphaned: "{{ current_policies_map.keys() | list | difference(netbird_policies | default([]) | map(attribute='name') | list) }}"
+    diff_groups_data: "{{ netbird_groups | default([]) | netbird_diff(current_groups_map, 'simple', protected=_protected_groups) }}"
+    diff_pc_data: "{{ netbird_posture_checks | default([]) | netbird_diff(current_posture_checks_map) }}"
+    diff_sk_data: "{{ netbird_setup_keys | default([]) | netbird_diff(current_setup_keys_map) }}"
+    diff_dns_data: "{{ netbird_dns_nameserver_groups | default([]) | netbird_diff(current_dns_map, 'dns', group_ids=group_ids) }}"
+    diff_dz_data: "{{ netbird_dns_zones | default([]) | netbird_diff(current_dns_zones_map) }}"
+    diff_net_data: "{{ netbird_networks | default([]) | netbird_diff(current_networks_enriched, 'network', peer_ids=peer_ids, peer_id_name=peer_id_name) }}"
+    diff_pol_data: "{{ netbird_policies | default([]) | netbird_diff(current_policies_map, 'policy') }}"
 
 # =========================================================================
-# Compute field-level changes for existing resources
+# Format and display
 # =========================================================================
-
-- name: Compute network field-level changes
+- name: Build account diff
   ansible.builtin.set_fact:
-    net_changes: >-
-      {% set changes = {} -%}
-      {% for name in net_existing -%}
-        {% set current = current_networks_enriched[name] -%}
-        {% set desired = netbird_networks | selectattr('name', 'equalto', name) | first -%}
-        {% set diffs = [] -%}
-        {% set cur_desc = current.description | default('', true) -%}
-        {% set des_desc = desired.description | default('', true) -%}
-        {% if (cur_desc or '') != (des_desc or '') -%}
-          {% set _ = diffs.append('description: "' ~ (cur_desc or '') ~ '" → "' ~ (des_desc or '') ~ '"') -%}
-        {% endif -%}
-        {% set current_routers = current.routers | default([]) -%}
-        {% set desired_routers = desired.routers | default([]) -%}
-        {% set cr_by_peer = {} -%}
-        {% for cr in current_routers -%}
-          {% set _ = cr_by_peer.update({cr.peer | default(''): cr}) -%}
-        {% endfor -%}
-        {% set matched_peers = [] -%}
-        {% for dr in desired_routers -%}
-          {% set dr_peer_name = dr.peer | default('') -%}
-          {% set dr_peer_id = peer_ids[dr_peer_name] if dr_peer_name in peer_ids else dr_peer_name -%}
-          {% set label = dr_peer_name if dr_peer_name else 'peer_groups' -%}
-          {% if dr_peer_id in cr_by_peer -%}
-            {% set cr = cr_by_peer[dr_peer_id] -%}
-            {% set _ = matched_peers.append(dr_peer_id) -%}
-            {% if (cr.metric | default(9999) | int) != (dr.metric | default(9999) | int) -%}
-              {% set _ = diffs.append('router[' ~ label ~ ']: metric ' ~ cr.metric | default(9999) ~ ' → ' ~ dr.metric | default(9999)) -%}
-            {% endif -%}
-            {% if (cr.masquerade | default(false) | bool) != (dr.masquerade | default(false) | bool) -%}
-              {% set _ = diffs.append('router[' ~ label ~ ']: masquerade ' ~ cr.masquerade | default(false) ~ ' → ' ~ dr.masquerade | default(false)) -%}
-            {% endif -%}
-            {% if (cr.enabled | default(true) | bool) != (dr.enabled | default(true) | bool) -%}
-              {% set _ = diffs.append('router[' ~ label ~ ']: enabled ' ~ cr.enabled | default(true) ~ ' → ' ~ dr.enabled | default(true)) -%}
-            {% endif -%}
-          {% else -%}
-            {% set _ = diffs.append('router[' ~ label ~ ']: + NEW') -%}
-          {% endif -%}
-        {% endfor -%}
-        {% for cr_peer_id, cr in cr_by_peer.items() -%}
-          {% if cr_peer_id not in matched_peers -%}
-            {% set cr_name = peer_id_name[cr_peer_id] if cr_peer_id in peer_id_name else cr_peer_id -%}
-            {% set _ = diffs.append('router[' ~ cr_name ~ ']: - REMOVED') -%}
-          {% endif -%}
-        {% endfor -%}
-        {% if diffs | length > 0 -%}
-          {% set _ = changes.update({name: diffs}) -%}
-        {% endif -%}
-      {% endfor -%}
-      {{ changes | to_json | from_json }}
+    diff_account:
+      - "── Account Settings ──────────────────────────────────────────"
+      - "{{ '  ~ EXISTS: account settings (will be re-applied)' if netbird_settings | default({}) | length > 0 else '  (not configured — skipped)' }}"
 
-- name: Compute DNS nameserver group changes
-  ansible.builtin.set_fact:
-    dns_changes: >-
-      {% set changes = {} -%}
-      {% for name in dns_existing -%}
-        {% set current = current_dns_map[name] -%}
-        {% set desired = netbird_dns_nameserver_groups | selectattr('name', 'equalto', name) | first -%}
-        {% set diffs = [] -%}
-        {% if (current.description | default('', true) or '') != (desired.description | default('', true) or '') -%}
-          {% set _ = diffs.append('description changed') -%}
-        {% endif -%}
-        {% if (current.enabled | default(true) | bool) != (desired.enabled | default(true) | bool) -%}
-          {% set _ = diffs.append('enabled: ' ~ current.enabled | default(true) ~ ' → ' ~ desired.enabled | default(true)) -%}
-        {% endif -%}
-        {% if (current.primary | default(false) | bool) != (desired.primary | default(false) | bool) -%}
-          {% set _ = diffs.append('primary: ' ~ current.primary | default(false) ~ ' → ' ~ desired.primary | default(false)) -%}
-        {% endif -%}
-        {% set cur_domains = current.domains | default([]) | sort -%}
-        {% set des_domains = desired.domains | default([]) | sort -%}
-        {% if cur_domains != des_domains -%}
-          {% set _ = diffs.append('domains changed') -%}
-        {% endif -%}
-        {% set cur_ns = current.nameservers | default([]) | map(attribute='ip') | sort | list -%}
-        {% set des_ns = desired.nameservers | default([]) | map(attribute='ip') | sort | list -%}
-        {% if cur_ns != des_ns -%}
-          {% set _ = diffs.append('nameservers changed') -%}
-        {% endif -%}
-        {% set cur_groups = current.groups | default([]) | sort -%}
-        {% set des_groups = desired.groups | default([]) | map('extract', group_ids) | sort | list -%}
-        {% if cur_groups != des_groups -%}
-          {% set _ = diffs.append('groups changed') -%}
-        {% endif -%}
-        {% if diffs | length > 0 -%}
-          {% set _ = changes.update({name: diffs}) -%}
-        {% endif -%}
-      {% endfor -%}
-      {{ changes | to_json | from_json }}
-
-- name: Compute policy changes
-  ansible.builtin.set_fact:
-    pol_changes: >-
-      {% set changes = {} -%}
-      {% for name in pol_existing -%}
-        {% set current = current_policies_map[name] -%}
-        {% set desired = netbird_policies | selectattr('name', 'equalto', name) | first -%}
-        {% set diffs = [] -%}
-        {% if (current.description | default('', true) or '') != (desired.description | default('', true) or '') -%}
-          {% set _ = diffs.append('description changed') -%}
-        {% endif -%}
-        {% if (current.enabled | default(true) | bool) != (desired.enabled | default(true) | bool) -%}
-          {% set _ = diffs.append('enabled: ' ~ current.enabled | default(true) ~ ' → ' ~ desired.enabled | default(true)) -%}
-        {% endif -%}
-        {% set cur_rules_count = current.rules | default([]) | length -%}
-        {% set des_rules_count = desired.rules | default([]) | length -%}
-        {% if cur_rules_count != des_rules_count -%}
-          {% set _ = diffs.append('rules: ' ~ cur_rules_count ~ ' → ' ~ des_rules_count) -%}
-        {% endif -%}
-        {% if diffs | length > 0 -%}
-          {% set _ = changes.update({name: diffs}) -%}
-        {% endif -%}
-      {% endfor -%}
-      {{ changes | to_json | from_json }}
-
-# =========================================================================
-# Build diff report lines
-# =========================================================================
-- name: Build diff report
-  ansible.builtin.set_fact:
-    diff_account: >-
-      {{ ['── Account Settings ──────────────────────────────────────────']
-        + (['  (not configured — skipped)'] if netbird_settings | default({}) | length == 0
-           else ['  ~ EXISTS: account settings (will be re-applied)']) }}
-    diff_posture_checks: >-
-      {{ ['── Posture Checks ────────────────────────────────────────────']
-        + (['  (not configured — skipped)'] if netbird_posture_checks | default([]) | length == 0 and pc_remove | length == 0 and pc_orphaned | length == 0
-           else ['  (no changes)'] if pc_new | length == 0 and pc_remove | length == 0 and pc_existing | length == 0 and pc_orphaned | length == 0
-           else pc_new | map('regex_replace', '^(.*)$', '  + ADD:     "\\1"') | list
-              + pc_remove | map('regex_replace', '^(.*)$', '  - REMOVE:  "\\1"') | list
-              + pc_orphaned | map('regex_replace', '^(.*)$', '  - ORPHAN:  "\\1" (not in config)') | list
-              + pc_existing | map('regex_replace', '^(.*)$', '  = OK:      "\\1"') | list) }}
-    diff_groups: >-
-      {{ ['── Groups ────────────────────────────────────────────────────']
-        + (['  (not configured — skipped)'] if netbird_groups | default([]) | length == 0 and groups_remove | length == 0 and groups_orphaned | length == 0
-           else ['  (no changes)'] if groups_new | length == 0 and groups_remove | length == 0 and groups_existing | length == 0 and groups_orphaned | length == 0
-           else groups_new | map('regex_replace', '^(.*)$', '  + ADD:     "\\1"') | list
-              + groups_remove | map('regex_replace', '^(.*)$', '  - REMOVE:  "\\1"') | list
-              + groups_orphaned | map('regex_replace', '^(.*)$', '  - ORPHAN:  "\\1" (not in config)') | list
-              + groups_existing | map('regex_replace', '^(.*)$', '  = OK:      "\\1"') | list) }}
-    diff_setup_keys: >-
-      {{ ['── Setup Keys ────────────────────────────────────────────────']
-        + (['  (not configured — skipped)'] if netbird_setup_keys | default([]) | length == 0 and sk_remove | length == 0 and sk_orphaned | length == 0
-           else ['  (no changes)'] if sk_new | length == 0 and sk_remove | length == 0 and sk_existing | length == 0 and sk_orphaned | length == 0
-           else sk_new | map('regex_replace', '^(.*)$', '  + ADD:     "\\1"') | list
-              + sk_remove | map('regex_replace', '^(.*)$', '  - REMOVE:  "\\1"') | list
-              + sk_orphaned | map('regex_replace', '^(.*)$', '  - ORPHAN:  "\\1" (not in config)') | list
-              + sk_existing | map('regex_replace', '^(.*)$', '  = OK:      "\\1"') | list) }}
-
-- name: Build DNS diff lines
-  ansible.builtin.set_fact:
-    diff_dns: >-
-      {% set lines = ['── DNS Nameserver Groups ─────────────────────────────────────'] -%}
-      {% if netbird_dns_nameserver_groups | default([]) | length == 0 and dns_remove | length == 0 and dns_orphaned | length == 0 -%}
-        {% set _ = lines.append('  (not configured — skipped)') -%}
-      {% elif dns_new | length == 0 and dns_remove | length == 0 and dns_existing | length == 0 and dns_orphaned | length == 0 -%}
-        {% set _ = lines.append('  (no changes)') -%}
-      {% else -%}
-        {% for n in dns_new -%}
-          {% set _ = lines.append('  + ADD:     "' ~ n ~ '"') -%}
-        {% endfor -%}
-        {% for n in dns_remove -%}
-          {% set _ = lines.append('  - REMOVE:  "' ~ n ~ '"') -%}
-        {% endfor -%}
-        {% for n in dns_orphaned -%}
-          {% set _ = lines.append('  - ORPHAN:  "' ~ n ~ '" (not in config)') -%}
-        {% endfor -%}
-        {% for n in dns_existing -%}
-          {% if n in dns_changes -%}
-            {% set _ = lines.append('  ~ CHANGED: "' ~ n ~ '"') -%}
-            {% for d in dns_changes[n] -%}
-              {% set _ = lines.append('      ' ~ d) -%}
-            {% endfor -%}
-          {% else -%}
-            {% set _ = lines.append('  = OK:      "' ~ n ~ '"') -%}
-          {% endif -%}
-        {% endfor -%}
-      {% endif -%}
-      {{ lines }}
-    diff_dns_zones: >-
-      {{ ['── DNS Zones ─────────────────────────────────────────────────']
-        + (['  (not configured — skipped)'] if netbird_dns_zones | default([]) | length == 0 and dz_remove | length == 0 and dz_orphaned | length == 0
-           else ['  (no changes)'] if dz_new | length == 0 and dz_remove | length == 0 and dz_existing | length == 0 and dz_orphaned | length == 0
-           else dz_new | map('regex_replace', '^(.*)$', '  + ADD:     "\\1"') | list
-              + dz_remove | map('regex_replace', '^(.*)$', '  - REMOVE:  "\\1"') | list
-              + dz_orphaned | map('regex_replace', '^(.*)$', '  - ORPHAN:  "\\1" (not in config)') | list
-              + dz_existing | map('regex_replace', '^(.*)$', '  = OK:      "\\1"') | list) }}
-
-- name: Build network diff lines
-  ansible.builtin.set_fact:
-    diff_networks: >-
-      {% set lines = ['── Networks ──────────────────────────────────────────────────'] -%}
-      {% if netbird_networks | default([]) | length == 0 and net_remove | length == 0 and net_orphaned | length == 0 -%}
-        {% set _ = lines.append('  (not configured — skipped)') -%}
-      {% elif net_new | length == 0 and net_remove | length == 0 and net_existing | length == 0 and net_orphaned | length == 0 -%}
-        {% set _ = lines.append('  (no changes)') -%}
-      {% else -%}
-        {% for n in net_new -%}
-          {% set _ = lines.append('  + ADD:     "' ~ n ~ '"') -%}
-        {% endfor -%}
-        {% for n in net_remove -%}
-          {% set _ = lines.append('  - REMOVE:  "' ~ n ~ '"') -%}
-        {% endfor -%}
-        {% for n in net_orphaned -%}
-          {% set _ = lines.append('  - ORPHAN:  "' ~ n ~ '" (not in config)') -%}
-        {% endfor -%}
-        {% for n in net_existing -%}
-          {% if n in net_changes -%}
-            {% set _ = lines.append('  ~ CHANGED: "' ~ n ~ '"') -%}
-            {% for d in net_changes[n] -%}
-              {% set _ = lines.append('      ' ~ d) -%}
-            {% endfor -%}
-          {% else -%}
-            {% set _ = lines.append('  = OK:      "' ~ n ~ '"') -%}
-          {% endif -%}
-        {% endfor -%}
-      {% endif -%}
-      {{ lines }}
-
-- name: Build policy diff lines
-  ansible.builtin.set_fact:
-    diff_policies: >-
-      {% set lines = ['── Policies ──────────────────────────────────────────────────'] -%}
-      {% if netbird_policies | default([]) | length == 0 and pol_remove | length == 0 and pol_orphaned | length == 0 -%}
-        {% set _ = lines.append('  (not configured — skipped)') -%}
-      {% elif pol_new | length == 0 and pol_remove | length == 0 and pol_existing | length == 0 and pol_orphaned | length == 0 -%}
-        {% set _ = lines.append('  (no changes)') -%}
-      {% else -%}
-        {% for n in pol_new -%}
-          {% set _ = lines.append('  + ADD:     "' ~ n ~ '"') -%}
-        {% endfor -%}
-        {% for n in pol_remove -%}
-          {% set _ = lines.append('  - REMOVE:  "' ~ n ~ '"') -%}
-        {% endfor -%}
-        {% for n in pol_orphaned -%}
-          {% set _ = lines.append('  - ORPHAN:  "' ~ n ~ '" (not in config)') -%}
-        {% endfor -%}
-        {% for n in pol_existing -%}
-          {% if n in pol_changes -%}
-            {% set _ = lines.append('  ~ CHANGED: "' ~ n ~ '"') -%}
-            {% for d in pol_changes[n] -%}
-              {% set _ = lines.append('      ' ~ d) -%}
-            {% endfor -%}
-          {% else -%}
-            {% set _ = lines.append('  = OK:      "' ~ n ~ '"') -%}
-          {% endif -%}
-        {% endfor -%}
-      {% endif -%}
-      {{ lines }}
-
-# =========================================================================
-# Display diff report
-# =========================================================================
 - name: Display diff report
   ansible.builtin.debug:
-    msg: "{{ diff_account + [''] + diff_posture_checks + [''] + diff_groups + [''] + diff_setup_keys + [''] + diff_dns + [''] + diff_dns_zones + [''] + diff_networks + [''] + diff_policies }}"
+    msg: >-
+      {{ diff_account + ['']
+        + diff_pc_data | netbird_format_diff('Posture Checks') + ['']
+        + diff_groups_data | netbird_format_diff('Groups') + ['']
+        + diff_sk_data | netbird_format_diff('Setup Keys') + ['']
+        + diff_dns_data | netbird_format_diff('DNS Nameserver Groups') + ['']
+        + diff_dz_data | netbird_format_diff('DNS Zones') + ['']
+        + diff_net_data | netbird_format_diff('Networks') + ['']
+        + diff_pol_data | netbird_format_diff('Policies') }}
 
 # =========================================================================
 # Summary
 # =========================================================================
-- name: Compute totals
-  ansible.builtin.set_fact:
-    total_add: "{{ (groups_new | length) + (pc_new | length) + (sk_new | length) + (dns_new | length) + (dz_new | length) + (net_new | length) + (pol_new | length) }}"
-    total_changed: "{{ (net_changes.keys() | list | length) + (dns_changes.keys() | list | length) + (pol_changes.keys() | list | length) }}"
-    total_unchanged: "{{ (groups_existing | length) + (pc_existing | length) + (sk_existing | length) + ((dns_existing | length) - (dns_changes.keys() | list | length)) + (dz_existing | length) + ((net_existing | length) - (net_changes.keys() | list | length)) + ((pol_existing | length) - (pol_changes.keys() | list | length)) }}"
-    total_remove: "{{ (groups_remove | length) + (pc_remove | length) + (sk_remove | length) + (dns_remove | length) + (dz_remove | length) + (net_remove | length) + (pol_remove | length) }}"
-    total_orphan: "{{ (groups_orphaned | length) + (pc_orphaned | length) + (sk_orphaned | length) + (dns_orphaned | length) + (dz_orphaned | length) + (net_orphaned | length) + (pol_orphaned | length) }}"
-
 - name: Display summary
   ansible.builtin.debug:
     msg:
       - "══════════════════════════════════════════════════════════════"
       - " SUMMARY — {{ config_dir | basename | upper }}{{ ' (STRICT)' if strict | default(false) | bool else '' }}"
       - "──────────────────────────────────────────────────────────────"
-      - " + Add:       {{ total_add }} resource(s)"
-      - " ~ Changed:   {{ total_changed }} resource(s)"
-      - " = Unchanged: {{ total_unchanged }} resource(s)"
-      - " - Remove:    {{ total_remove }} resource(s)"
-      - "{% if total_orphan | int > 0 %} - Orphan:    {{ total_orphan }} resource(s) (not in config{{ ', will be removed with strict=true' if not strict | default(false) | bool else ', WILL BE REMOVED' }}){% endif %}"
+      - " + Add:       {{ (diff_groups_data.new | length) + (diff_pc_data.new | length) + (diff_sk_data.new | length) + (diff_dns_data.new | length) + (diff_dz_data.new | length) + (diff_net_data.new | length) + (diff_pol_data.new | length) }} resource(s)"
+      - " ~ Changed:   {{ (diff_groups_data.changed | length) + (diff_pc_data.changed | length) + (diff_sk_data.changed | length) + (diff_dns_data.changed | length) + (diff_dz_data.changed | length) + (diff_net_data.changed | length) + (diff_pol_data.changed | length) }} resource(s)"
+      - " = Unchanged: {{ (diff_groups_data.unchanged | length) + (diff_pc_data.unchanged | length) + (diff_sk_data.unchanged | length) + (diff_dns_data.unchanged | length) + (diff_dz_data.unchanged | length) + (diff_net_data.unchanged | length) + (diff_pol_data.unchanged | length) }} resource(s)"
+      - " - Remove:    {{ (diff_groups_data.remove | length) + (diff_pc_data.remove | length) + (diff_sk_data.remove | length) + (diff_dns_data.remove | length) + (diff_dz_data.remove | length) + (diff_net_data.remove | length) + (diff_pol_data.remove | length) }} resource(s)"
+      - "{% set total_orphan = (diff_groups_data.orphaned | length) + (diff_pc_data.orphaned | length) + (diff_sk_data.orphaned | length) + (diff_dns_data.orphaned | length) + (diff_dz_data.orphaned | length) + (diff_net_data.orphaned | length) + (diff_pol_data.orphaned | length) %}{% if total_orphan > 0 %} - Orphan:    {{ total_orphan }} resource(s) (not in config{{ ', will be removed with strict=true' if not strict | default(false) | bool else ', WILL BE REMOVED' }}){% endif %}"
       - "══════════════════════════════════════════════════════════════"
-      - "{% if total_add | int + total_remove | int + total_orphan | int + total_changed | int == 0 %} No changes detected. Configuration is in sync.{% elif total_add | int + total_remove | int + total_orphan | int == 0 and total_changed | int > 0 %} {{ total_changed }} resource(s) will be updated. Run with -e \"commit=true\" to apply.{% else %} Run with -e \"commit=true\"{{ ' -e \"strict=true\"' if strict | default(false) | bool else '' }} to apply these changes.{% endif %}"
