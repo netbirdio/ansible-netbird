@@ -33,6 +33,8 @@ netbird_dns_nameserver_groups:
 {% for domain in ns.domains %}
       - "{{ domain }}"
 {% endfor %}
+{% else %}
+    domains: []
 {% endif %}
     enabled: {{ ns.enabled | default(true) | lower }}
     primary: {{ ns.primary | default(false) | lower }}

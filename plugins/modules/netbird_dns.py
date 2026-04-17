@@ -270,17 +270,24 @@ def nsgroup_needs_update(current, params):
         if nameservers_need_update(current.get('nameservers'), params['nameservers']):
             return True
 
-    # Check groups
+    # Check groups -- treat backend null as a heal-eligible change
     if params.get('groups') is not None:
-        current_groups = set(extract_ids(current.get('groups') or []))
-        desired_groups = set(extract_ids(params['groups'] or []))
+        current_raw_groups = current.get('groups')
+        if current_raw_groups is None:
+            return True
+        current_groups = set(extract_ids(current_raw_groups))
+        desired_groups = set(extract_ids(params['groups']))
         if current_groups != desired_groups:
             return True
-    
-    # Check domains
+
+    # Check domains -- treat backend null as a heal-eligible change
+    # (the dashboard crashes on null; an update must fire to coerce it to [])
     if params.get('domains') is not None:
-        current_domains = set(current.get('domains') or [])
-        desired_domains = set(params['domains'] or [])
+        current_raw_domains = current.get('domains')
+        if current_raw_domains is None:
+            return True
+        current_domains = set(current_raw_domains)
+        desired_domains = set(params['domains'])
         if current_domains != desired_domains:
             return True
     
@@ -376,18 +383,27 @@ def run_module():
 
         # state == 'present'
         if existing_group:
+            # Coerce null-valued list fields to []. The NetBird dashboard crashes
+            # when a nameserver group's domains/groups is null (the backend
+            # installer can seed it that way), so the apply cycle must heal
+            # pre-existing null state rather than preserve it. Done at the
+            # module layer so that module_utils.netbird_api stays a pure
+            # partial-update HTTP primitive.
+            desired_domains = module.params['domains'] if module.params['domains'] is not None else []
+            desired_groups = module.params['groups'] if module.params['groups'] is not None else []
+
             # Check if update is needed
             update_params = {
                 'name': name,
                 'description': module.params['description'],
                 'nameservers': module.params['nameservers'],
-                'groups': module.params['groups'],
-                'domains': module.params['domains'],
+                'groups': desired_groups,
+                'domains': desired_domains,
                 'enabled': module.params['enabled'],
                 'primary': module.params['primary'],
                 'search_domains_enabled': module.params['search_domains_enabled']
             }
-            
+
             if nsgroup_needs_update(existing_group, update_params):
                 if not module.check_mode:
                     group, _ = api.update_nameserver_group(
@@ -395,8 +411,8 @@ def run_module():
                         name=name,
                         nameservers=module.params['nameservers'],
                         description=module.params['description'],
-                        groups=module.params['groups'],
-                        domains=module.params['domains'],
+                        groups=desired_groups,
+                        domains=desired_domains,
                         enabled=module.params['enabled'],
                         primary=module.params['primary'],
                         search_domains_enabled=module.params['search_domains_enabled']

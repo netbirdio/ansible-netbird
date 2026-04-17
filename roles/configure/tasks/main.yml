@@ -342,8 +342,10 @@
         name: "{{ item.name }}"
         description: "{{ item.description | default(omit) }}"
         nameservers: "{{ item.nameservers }}"
-        groups: "{{ item.groups | default([]) | map('extract', group_ids) | list }}"
-        domains: "{{ item.domains | default(omit) }}"
+        groups: "{{ item.groups | default([], true) | map('extract', group_ids) | list }}"
+        # Coerce null/undefined to [] so the apply path heals backend state
+        # where domains was seeded as null (the dashboard crashes on null).
+        domains: "{{ item.domains | default([], true) }}"
         enabled: "{{ item.enabled | default(true) }}"
         primary: "{{ item.primary | default(false) }}"
         search_domains_enabled: "{{ item.search_domains_enabled | default(omit) }}"
