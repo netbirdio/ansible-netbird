@@ -20,7 +20,7 @@ netbird_dns_nameserver_groups:
         ns_type: "{{ server.ns_type }}"
         port: {{ server.port }}
 {% endfor %}
-{% if ns.groups is defined and ns.groups | length > 0 %}
+{% if ns.groups is defined and ns.groups is not none and ns.groups | length > 0 %}
     groups:
 {% for gid in ns.groups %}
       - {{ group_id_map[gid] | default(gid) }}
@@ -28,7 +28,7 @@ netbird_dns_nameserver_groups:
 {% else %}
     groups: []
 {% endif %}
-{% if ns.domains is defined and ns.domains | length > 0 %}
+{% if ns.domains is defined and ns.domains is not none and ns.domains | length > 0 %}
     domains:
 {% for domain in ns.domains %}
       - "{{ domain }}"

@@ -279,8 +279,8 @@ def nsgroup_needs_update(current, params):
     
     # Check domains
     if params.get('domains') is not None:
-        current_domains = set(current.get('domains', []))
-        desired_domains = set(params['domains'])
+        current_domains = set(current.get('domains') or [])
+        desired_domains = set(params['domains'] or [])
         if current_domains != desired_domains:
             return True
     
