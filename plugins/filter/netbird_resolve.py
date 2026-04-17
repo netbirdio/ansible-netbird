@@ -23,8 +23,23 @@ def _resolve_setup_key(sk, group_ids):
     return result
 
 
-def _resolve_policy(policy, group_ids, posture_check_ids):
-    """Resolve a single policy's group and posture check references."""
+def _resolve_resource_ref(resource, peer_ids):
+    """Resolve {name, type: peer} to {id, type: peer} using peer_ids map.
+
+    Non-peer resources (host/domain/subnet) pass through unchanged since their
+    IDs in exported YAML are already concrete API IDs.
+    """
+    if not isinstance(resource, dict):
+        return resource
+    if resource.get('type') == 'peer' and 'name' in resource and 'id' not in resource:
+        name = resource['name']
+        return {'id': peer_ids.get(name, name), 'type': 'peer'}
+    return resource
+
+
+def _resolve_policy(policy, group_ids, posture_check_ids, peer_ids=None):
+    """Resolve a single policy's group, posture check, and peer references."""
+    peer_ids = peer_ids or {}
     result = dict(policy)
 
     if 'source_posture_checks' in policy:
@@ -42,6 +57,14 @@ def _resolve_policy(policy, group_ids, posture_check_ids):
             resolved_rule['destinations'] = _resolve_names(
                 rule.get('destinations', []), group_ids
             )
+            if rule.get('source_resource') is not None:
+                resolved_rule['source_resource'] = _resolve_resource_ref(
+                    rule['source_resource'], peer_ids
+                )
+            if rule.get('destination_resource') is not None:
+                resolved_rule['destination_resource'] = _resolve_resource_ref(
+                    rule['destination_resource'], peer_ids
+                )
             resolved_rules.append(resolved_rule)
         result['rules'] = resolved_rules
 
@@ -106,7 +129,7 @@ def netbird_resolve_ids(resource_list, resource_type, **kwargs):
         if resource_type == 'setup_key':
             result.append(_resolve_setup_key(item, group_ids))
         elif resource_type == 'policy':
-            result.append(_resolve_policy(item, group_ids, posture_check_ids))
+            result.append(_resolve_policy(item, group_ids, posture_check_ids, peer_ids))
         elif resource_type == 'network':
             result.append(_resolve_network(item, group_ids, peer_ids))
         else:

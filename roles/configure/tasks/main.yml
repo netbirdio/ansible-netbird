@@ -232,7 +232,7 @@
 
     - name: Resolve group/peer/posture-check names to IDs
       ansible.builtin.set_fact:
-        _resolved_policies: "{{ netbird_policies | default([]) | community.ansible_netbird.netbird_resolve_ids('policy', group_ids=group_ids, posture_check_ids=posture_check_ids) }}"
+        _resolved_policies: "{{ netbird_policies | default([]) | community.ansible_netbird.netbird_resolve_ids('policy', group_ids=group_ids, posture_check_ids=posture_check_ids, peer_ids=peer_ids) }}"
         _resolved_networks: "{{ netbird_networks | default([]) | community.ansible_netbird.netbird_resolve_ids('network', group_ids=group_ids, peer_ids=peer_ids) }}"
       when: commit | bool
 
