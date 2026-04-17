@@ -175,7 +175,14 @@
       ansible.builtin.set_fact:
         group_id_map: "{{ dict(groups_data.data | map(attribute='id') | zip(groups_data.data | map(attribute='name'))) }}"
         posture_check_id_map: "{{ dict(posture_checks_data.data | map(attribute='id') | zip(posture_checks_data.data | map(attribute='name'))) }}"
-        peer_id_map: "{{ dict(peers_data.data | map(attribute='id') | zip(peers_data.data | map(attribute='name'))) }}"
+        # peer_id_map: lookup both peer.id AND peer.hostname -> peer.name.
+        # The networks router API returns router.peer as hostname in some
+        # cases, so we need to resolve either form to the canonical peer name
+        # when exporting. peer.id map is combined last so an ID always wins
+        # on the rare chance a hostname collides with an ID.
+        peer_id_map: >-
+          {{ dict(peers_data.data | map(attribute='hostname') | zip(peers_data.data | map(attribute='name')))
+             | combine(dict(peers_data.data | map(attribute='id') | zip(peers_data.data | map(attribute='name')))) }}
 
     # =====================================================================
     # Write clean config files (ready to use with configure role)

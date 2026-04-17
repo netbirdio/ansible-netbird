@@ -209,9 +209,15 @@
         resource: peers
       register: api_peers
 
-    - name: Build peer name→ID map
+    - name: Build peer name→ID map (hostname aliases included)
+      # The /api/networks/{id}/routers endpoint returns router.peer as the
+      # peer's HOSTNAME (not name). To let exported network configs resolve
+      # cleanly, include hostname→id pairs as aliases for name→id.
+      # The name map is combined last so peer.name takes precedence on collision.
       ansible.builtin.set_fact:
-        peer_ids: "{{ dict(api_peers.data | map(attribute='name') | zip(api_peers.data | map(attribute='id'))) }}"
+        peer_ids: >-
+          {{ dict(api_peers.data | map(attribute='hostname') | zip(api_peers.data | map(attribute='id')))
+             | combine(dict(api_peers.data | map(attribute='name') | zip(api_peers.data | map(attribute='id')))) }}
 
     - name: Display ID maps
       ansible.builtin.debug:
