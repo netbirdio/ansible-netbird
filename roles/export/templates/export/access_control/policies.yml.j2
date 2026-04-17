@@ -48,8 +48,9 @@ netbird_policies:
 {% endif %}
 {% endfor %}
 {% elif _src_res is not none and _src_res is mapping and _src_res.type == 'peer' %}
-        sources:
-          - {{ peer_id_map.get(_src_res.id, _src_res.id) }}
+        source_resource:
+          name: "{{ peer_id_map.get(_src_res.id, _src_res.id) }}"
+          type: "peer"
 {% elif _src_res is not none and _src_res is mapping %}
         source_resource:
           id: "{{ _src_res.id }}"
@@ -66,8 +67,9 @@ netbird_policies:
 {% endif %}
 {% endfor %}
 {% elif _dst_res is not none and _dst_res is mapping and _dst_res.type == 'peer' %}
-        destinations:
-          - {{ peer_id_map.get(_dst_res.id, _dst_res.id) }}
+        destination_resource:
+          name: "{{ peer_id_map.get(_dst_res.id, _dst_res.id) }}"
+          type: "peer"
 {% elif _dst_res is not none and _dst_res is mapping %}
         destination_resource:
           id: "{{ _dst_res.id }}"
