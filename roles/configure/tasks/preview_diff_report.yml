@@ -8,8 +8,8 @@
   ansible.builtin.debug:
     msg:
       - "══════════════════════════════════════════════════════════════"
-      - " NETBIRD CONFIGURATION PREVIEW — {{ config_dir | basename | upper }}"
-      - " Config: {{ config_dir }}/"
+      - " NETBIRD CONFIGURATION PREVIEW — {{ _config_dir_abs | basename | upper }}"
+      - " Config: {{ _config_dir_abs }}/"
       - " API:    {{ netbird_api_url }}"
       - " Mode:   READ-ONLY (no changes will be made)"
       - "══════════════════════════════════════════════════════════════"
@@ -93,7 +93,7 @@
   ansible.builtin.debug:
     msg:
       - "══════════════════════════════════════════════════════════════"
-      - " SUMMARY — {{ config_dir | basename | upper }}{{ ' (STRICT)' if strict | default(false) | bool else '' }}"
+      - " SUMMARY — {{ _config_dir_abs | basename | upper }}{{ ' (STRICT)' if strict | default(false) | bool else '' }}"
       - "──────────────────────────────────────────────────────────────"
       - " + Add:       {{ (diff_groups_data.new | length) + (diff_pc_data.new | length) + (diff_sk_data.new | length) + (diff_dns_data.new | length) + (diff_dz_data.new | length) + (diff_net_data.new | length) + (diff_pol_data.new | length) }} resource(s)"
       - " ~ Changed:   {{ (diff_groups_data.changed | length) + (diff_pc_data.changed | length) + (diff_sk_data.changed | length) + (diff_dns_data.changed | length) + (diff_dz_data.changed | length) + (diff_net_data.changed | length) + (diff_pol_data.changed | length) }} resource(s)"
