@@ -48,22 +48,32 @@
         netbird_api_url: "https://netbird.example.com"
         netbird_api_token: "your-api-token"
 
+# `include_vars: dir:` resolves relative paths against the role's vars/
+# directory rather than the playbook CWD, so a relative config_dir blows up
+# the access_control / dns loads. Canonicalize once and route every
+# downstream reference through `_config_dir_abs` -- a `set_fact` cannot
+# override the role's `config_dir` input because `include_role: vars:`
+# has higher precedence, so a separate fact name is required.
+- name: Normalize config_dir to absolute path
+  ansible.builtin.set_fact:
+    _config_dir_abs: "{{ config_dir | expanduser | realpath }}"
+
 - name: Display target environment
   ansible.builtin.debug:
     msg: >-
-      NetBird {{ config_dir | basename | upper }} —
+      NetBird {{ _config_dir_abs | basename | upper }} —
       {{ 'APPLY MODE' if commit | bool else 'PREVIEW MODE (read-only, no changes)' }}{{ ' + STRICT (unmanaged resources will be removed)' if strict | bool else '' }}
-      — config from {{ config_dir }}/
+      — config from {{ _config_dir_abs }}/
 
 - name: Check config directory exists
   ansible.builtin.stat:
-    path: "{{ config_dir }}"
+    path: "{{ _config_dir_abs }}"
   register: config_dir_stat
   delegate_to: localhost
 
 - name: Fail if config directory doesn't exist
   ansible.builtin.fail:
-    msg: "Config directory not found: {{ config_dir }}"
+    msg: "Config directory not found: {{ _config_dir_abs }}"
   when: not config_dir_stat.stat.exists
 
 # =========================================================================
@@ -71,37 +81,37 @@
 # =========================================================================
 - name: Load settings
   ansible.builtin.include_vars:
-    file: "{{ config_dir }}/settings.yml"
+    file: "{{ _config_dir_abs }}/settings.yml"
 
 - name: Load access control (groups, posture checks, policies)
   ansible.builtin.include_vars:
-    dir: "{{ config_dir }}/access_control"
+    dir: "{{ _config_dir_abs }}/access_control"
     extensions: ['yml', 'yaml']
 
 - name: Load DNS configuration (nameservers, zones, settings)
   ansible.builtin.include_vars:
-    dir: "{{ config_dir }}/dns"
+    dir: "{{ _config_dir_abs }}/dns"
     extensions: ['yml', 'yaml']
 
 - name: Load networks
   ansible.builtin.include_vars:
-    file: "{{ config_dir }}/networks.yml"
+    file: "{{ _config_dir_abs }}/networks.yml"
 
 - name: Check if setup keys config exists
   ansible.builtin.stat:
-    path: "{{ config_dir }}/setup_keys.yml"
+    path: "{{ _config_dir_abs }}/setup_keys.yml"
   register: _setup_keys_file
   delegate_to: localhost
 
 - name: Load setup keys
   ansible.builtin.include_vars:
-    file: "{{ config_dir }}/setup_keys.yml"
+    file: "{{ _config_dir_abs }}/setup_keys.yml"
   when: _setup_keys_file.stat.exists
 
 - name: Display configuration summary
   ansible.builtin.debug:
     msg:
-      - "Configuration loaded from: {{ config_dir }}/"
+      - "Configuration loaded from: {{ _config_dir_abs }}/"
       - "  Settings:         {{ 'configured' if netbird_settings | default({}) | length > 0 else 'empty' }}"
       - "  Groups:           {{ netbird_groups | default([]) | length }}"
       - "  Posture checks:   {{ netbird_posture_checks | default([]) | length }}"
@@ -528,7 +538,7 @@
     # =====================================================================
     - name: Configuration complete
       ansible.builtin.debug:
-        msg: "NetBird configuration applied successfully from {{ config_dir }}/"
+        msg: "NetBird configuration applied successfully from {{ _config_dir_abs }}/"
       when: commit | bool
 
   module_defaults:
