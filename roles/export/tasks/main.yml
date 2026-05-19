@@ -113,6 +113,7 @@
       loop_control:
         label: "{{ item.name }}"
       register: networks_routers_raw
+      no_log: true
       when: networks_data.data | length > 0
 
     - name: Fetch resources for each network
@@ -128,6 +129,7 @@
       loop_control:
         label: "{{ item.name }}"
       register: networks_resources_raw
+      no_log: true
       when: networks_data.data | length > 0
 
     - name: Enrich networks with routers and resources

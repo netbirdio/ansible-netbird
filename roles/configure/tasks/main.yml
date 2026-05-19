@@ -321,6 +321,7 @@
       loop_control:
         label: "{{ item.name }}"
       register: preview_network_routers
+      no_log: true
       when:
         - not commit | bool
         - api_networks.data | default([]) | length > 0
