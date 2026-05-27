@@ -347,6 +347,69 @@ def netbird_missing_names(name_list, id_map, kind='group', context=''):
     return missing
 
 
+def _as_port_int(value):
+    """Coerce a port value to int, or None if it isn't an integer."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def netbird_value_problems(policies, setup_keys=None):
+    """Collect structurally-invalid field VALUES without raising.
+
+    A pre-flight companion to ``netbird_missing_refs`` for the small set of
+    value checks that are unambiguous and stable regardless of NetBird API
+    version (so they won't false-positive): policy rule ports / port ranges
+    must be integers in 1-65535 with start <= end, and setup-key ``expires_in``
+    must be a positive integer. Notably this catches inverted port ranges,
+    which the NetBird API itself accepts silently.
+
+    CIDR / DNS-record / posture-check value validation is deliberately NOT done
+    here: those rules are API-version-specific and reimplementing them risks
+    rejecting configs the API would accept. Returns a list of human-readable
+    problem strings ([] means OK).
+    """
+    problems = []
+    for pol in policies or []:
+        if not isinstance(pol, dict):
+            continue
+        pname = pol.get('name', '<unnamed>')
+        for rule in pol.get('rules') or []:
+            if not isinstance(rule, dict):
+                continue
+            rname = rule.get('name', '<unnamed>')
+            for port in rule.get('ports') or []:
+                pv = _as_port_int(port)
+                if pv is None or not (1 <= pv <= 65535):
+                    problems.append(
+                        "policy '%s' rule '%s': port %r is not an integer in 1-65535"
+                        % (pname, rname, port))
+            for pr in rule.get('port_ranges') or []:
+                if not isinstance(pr, dict):
+                    continue
+                start, end = _as_port_int(pr.get('start')), _as_port_int(pr.get('end'))
+                if (start is None or end is None
+                        or not (1 <= start <= 65535) or not (1 <= end <= 65535)):
+                    problems.append(
+                        "policy '%s' rule '%s': port_range %r-%r is outside 1-65535"
+                        % (pname, rname, pr.get('start'), pr.get('end')))
+                elif start > end:
+                    problems.append(
+                        "policy '%s' rule '%s': port_range start > end (%d > %d)"
+                        % (pname, rname, start, end))
+    for sk in setup_keys or []:
+        if not isinstance(sk, dict):
+            continue
+        if sk.get('expires_in') is not None:
+            iv = _as_port_int(sk.get('expires_in'))
+            if iv is None or iv <= 0:
+                problems.append(
+                    "setup key '%s': expires_in must be a positive integer (got %r)"
+                    % (sk.get('name', '<unnamed>'), sk.get('expires_in')))
+    return problems
+
+
 class FilterModule(object):
     """NetBird name-to-ID resolution filter plugins."""
 
@@ -356,4 +419,5 @@ class FilterModule(object):
             'netbird_resolve_names': netbird_resolve_names,
             'netbird_missing_refs': netbird_missing_refs,
             'netbird_missing_names': netbird_missing_names,
+            'netbird_value_problems': netbird_value_problems,
         }

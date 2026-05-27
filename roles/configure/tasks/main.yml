@@ -127,7 +127,38 @@
 - name: Configure NetBird resources
   block:
     # =====================================================================
-    # PHASE 0: Pre-flight reference validation (runs before ANY mutation)
+    # PHASE 0a: Pre-flight VALUE validation (pure config, no API calls)
+    #
+    # Catches structurally-invalid field values before any mutation, for the
+    # small set of checks that are unambiguous and API-version-stable: policy
+    # rule ports / port_ranges (ints in 1-65535, start <= end) and setup-key
+    # expires_in (> 0). This notably catches inverted port ranges, which the
+    # NetBird API itself accepts silently. CIDR / DNS-record / posture-check
+    # value validation is intentionally left to the API (reimplementing those
+    # rules risks rejecting configs the API would accept).
+    # =====================================================================
+    - name: "Pre-flight: collect invalid field values"
+      ansible.builtin.set_fact:
+        _pf_value_problems: >-
+          {{ netbird_policies | default([])
+             | community.ansible_netbird.netbird_value_problems(setup_keys=netbird_setup_keys | default([])) }}
+
+    - name: "Pre-flight: fail fast on invalid field values (no changes applied)"
+      ansible.builtin.assert:
+        that:
+          - _pf_value_problems | length == 0
+        quiet: true
+        fail_msg: |
+          Pre-flight validation failed — NO changes were applied.
+
+          The following field values are invalid:
+          {% for p in _pf_value_problems %}
+            - {{ p }}
+          {% endfor %}
+        success_msg: "Pre-flight validation passed — field values are valid."
+
+    # =====================================================================
+    # PHASE 0b: Pre-flight reference validation (runs before ANY mutation)
     #
     # Resolves every group / posture-check / peer reference in the config
     # against what exists in the control plane PLUS what this run will create,
@@ -154,19 +185,27 @@
 
     # Names this run will create are valid references even though they don't
     # exist on the API yet — map name→name as a placeholder (only key
-    # membership matters for validation; the value is discarded). Control-plane
+    # membership matters for validation; the value is discarded). Items declared
+    # state: absent are excluded because PHASE 1 removes them, so they will not
+    # exist by the time references are resolved. The live API maps are combined
+    # LAST so real name→id entries win on collisions — otherwise a placeholder
+    # name→name would shadow the live ID and falsely reject a valid raw-ID
+    # reference to a group/check that is also declared in YAML. Control-plane
     # groups (including IdP/SCIM issued=jwt groups) are valid because they come
     # straight from the live groups list.
     - name: "Pre-flight: build validation maps (control-plane + to-be-created)"
       ansible.builtin.set_fact:
         _pf_group_ids: >-
-          {{ dict(_pf_groups.data | map(attribute='name') | zip(_pf_groups.data | map(attribute='id')))
-             | combine(dict((netbird_groups | default([]) | map(attribute='name') | list)
-                            | zip(netbird_groups | default([]) | map(attribute='name') | list))) }}
+          {{ dict((netbird_groups | default([]) | selectattr('state', 'undefined') | list
+                   + netbird_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'ne', 'absent') | list
+                   | map(attribute='name') | list) | zip_longest([], fillvalue=''))
+             | combine(dict(netbird_groups | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list
+                            | zip(netbird_groups | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list)))
+             | combine(dict(_pf_groups.data | map(attribute='name') | zip(_pf_groups.data | map(attribute='id')))) }}
         _pf_posture_ids: >-
-          {{ dict(_pf_posture.data | map(attribute='name') | zip(_pf_posture.data | map(attribute='id')))
-             | combine(dict((netbird_posture_checks | default([]) | map(attribute='name') | list)
-                            | zip(netbird_posture_checks | default([]) | map(attribute='name') | list))) }}
+          {{ dict(netbird_posture_checks | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list
+                  | zip(netbird_posture_checks | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list))
+             | combine(dict(_pf_posture.data | map(attribute='name') | zip(_pf_posture.data | map(attribute='id')))) }}
         _pf_peer_ids: >-
           {{ dict(_pf_peers.data | map(attribute='hostname') | zip(_pf_peers.data | map(attribute='id')))
              | combine(dict(_pf_peers.data | map(attribute='name') | zip(_pf_peers.data | map(attribute='id')))) }}
@@ -203,6 +242,14 @@
           synced into NetBird and that the name matches exactly. Otherwise, check
           for a typo or a missing definition in your config files.
         success_msg: "Pre-flight validation passed — all references resolve."
+
+    # All pre-flight gates passed. From here on, an apply (commit=true) may
+    # mutate the control plane, so a failure below means a *partial* apply.
+    # The rescue at the end of this block uses this flag to tell the operator
+    # whether anything was actually written.
+    - name: "Pre-flight passed — mark mutation boundary"
+      ansible.builtin.set_fact:
+        _nb_mutations_started: "{{ commit | bool }}"
 
     # =====================================================================
     # PHASE 1: Apply foundational resources (commit mode only)
@@ -630,6 +677,37 @@
       ansible.builtin.debug:
         msg: "NetBird configuration applied successfully from {{ _config_dir_abs }}/"
       when: commit | bool
+
+  # =======================================================================
+  # Failure reporting: a value rejected by the NetBird API (e.g. a bad CIDR,
+  # DNS record, or posture-check value — things the pre-flight intentionally
+  # does not validate) can fail an apply part-way through. The pre-flight
+  # gates run before any mutation, so if we never reached the mutation
+  # boundary, nothing was written. Otherwise surface the apply order so the
+  # operator knows what was applied vs not, then re-raise.
+  # =======================================================================
+  rescue:
+    - name: "Report failure context"
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            ['Pre-flight validation failed — NO changes were applied. Fix the reported issue and re-run.']
+            if not (_nb_mutations_started | default(false) | bool)
+            else [
+              'APPLY FAILED PART-WAY THROUGH — the control plane may be partially updated.',
+              'Resources are applied in this order: account settings → posture checks → groups → setup keys → DNS nameservers → DNS settings → DNS zones → networks → policies.',
+              'Everything before the failed task was applied; the failed task and everything after were NOT.',
+              'Failed task: ' ~ (ansible_failed_task.name | default('unknown')),
+              'Error: ' ~ (ansible_failed_result.msg | default(ansible_failed_result | to_json)),
+              'Recovery: fix the reported value and re-run (the apply is idempotent), or restore from a safe_apply.yml backup.'
+            ]
+          }}
+
+    - name: "Re-raise the original failure"
+      ansible.builtin.fail:
+        msg: >-
+          configure role failed{{ ' after partial apply' if (_nb_mutations_started | default(false) | bool) else ' during pre-flight (no changes applied)' }}:
+          {{ ansible_failed_result.msg | default('see above') }}
 
   module_defaults:
     group/community.ansible_netbird.netbird:
