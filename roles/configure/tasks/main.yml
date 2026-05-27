@@ -495,7 +495,7 @@
         name: "{{ item.name }}"
         description: "{{ item.description | default(omit) }}"
         nameservers: "{{ item.nameservers }}"
-        groups: "{{ item.groups | default([], true) | map('extract', group_ids) | list }}"
+        groups: "{{ item.groups | default([], true) | community.ansible_netbird.netbird_resolve_names(group_ids, 'group', 'DNS nameserver group ' + item.name + ' groups') }}"
         # Coerce null/undefined to [] so the apply path heals backend state
         # where domains was seeded as null (the dashboard crashes on null).
         domains: "{{ item.domains | default([], true) }}"
@@ -513,7 +513,7 @@
     - name: Manage DNS settings
       community.ansible_netbird.netbird_dns:
         resource_type: settings
-        disabled_management_groups: "{{ netbird_dns_disabled_management_groups | default([]) | map('extract', group_ids) | list }}"
+        disabled_management_groups: "{{ netbird_dns_disabled_management_groups | default([]) | community.ansible_netbird.netbird_resolve_names(group_ids, 'group', 'DNS disabled_management_groups') }}"
         state: present
       when:
         - commit | bool
