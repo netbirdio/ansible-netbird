@@ -193,18 +193,28 @@
     # reference to a group/check that is also declared in YAML. Control-plane
     # groups (including IdP/SCIM issued=jwt groups) are valid because they come
     # straight from the live groups list.
-    - name: "Pre-flight: build validation maps (control-plane + to-be-created)"
+    # Names of groups/posture checks this run will create (state present or
+    # unspecified). state: absent items are excluded — PHASE 1 deletes them, so
+    # they will not exist when references are resolved. The two-pass selectattr
+    # keeps items with no 'state' key without ever evaluating an equality test
+    # against an undefined attribute (which raises 'dict object has no attribute
+    # state' under Ansible's strict undefined handling).
+    - name: "Pre-flight: collect names this run will create"
+      ansible.builtin.set_fact:
+        _pf_created_groups: >-
+          {{ (netbird_groups | default([]) | selectattr('state', 'undefined') | map(attribute='name') | list)
+             + (netbird_groups | default([]) | selectattr('state', 'defined') | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list) }}
+        _pf_created_posture: >-
+          {{ (netbird_posture_checks | default([]) | selectattr('state', 'undefined') | map(attribute='name') | list)
+             + (netbird_posture_checks | default([]) | selectattr('state', 'defined') | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list) }}
+
+    - name: "Pre-flight: build validation maps (control-plane wins over to-be-created)"
       ansible.builtin.set_fact:
         _pf_group_ids: >-
-          {{ dict((netbird_groups | default([]) | selectattr('state', 'undefined') | list
-                   + netbird_groups | default([]) | selectattr('state', 'defined') | selectattr('state', 'ne', 'absent') | list
-                   | map(attribute='name') | list) | zip_longest([], fillvalue=''))
-             | combine(dict(netbird_groups | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list
-                            | zip(netbird_groups | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list)))
+          {{ dict(_pf_created_groups | zip(_pf_created_groups))
              | combine(dict(_pf_groups.data | map(attribute='name') | zip(_pf_groups.data | map(attribute='id')))) }}
         _pf_posture_ids: >-
-          {{ dict(netbird_posture_checks | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list
-                  | zip(netbird_posture_checks | default([]) | rejectattr('state', 'eq', 'absent') | map(attribute='name') | list))
+          {{ dict(_pf_created_posture | zip(_pf_created_posture))
              | combine(dict(_pf_posture.data | map(attribute='name') | zip(_pf_posture.data | map(attribute='id')))) }}
         _pf_peer_ids: >-
           {{ dict(_pf_peers.data | map(attribute='hostname') | zip(_pf_peers.data | map(attribute='id')))
