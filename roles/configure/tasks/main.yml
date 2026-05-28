@@ -705,7 +705,7 @@
             if not (_nb_mutations_started | default(false) | bool)
             else [
               'APPLY FAILED PART-WAY THROUGH — the control plane may be partially updated.',
-              'Resources are applied in this order: account settings → posture checks → groups → setup keys → DNS nameservers → DNS settings → DNS zones → networks → policies.',
+              'Resources are applied in this order: posture checks → groups → account settings → setup keys → DNS nameservers → DNS settings → DNS zones → networks → policies.',
               'Everything before the failed task was applied; the failed task and everything after were NOT.',
               'Failed task: ' ~ (ansible_failed_task.name | default('unknown')),
               'Error: ' ~ (ansible_failed_result.msg | default(ansible_failed_result | to_json)),
