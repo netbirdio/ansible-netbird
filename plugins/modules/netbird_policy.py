@@ -466,7 +466,7 @@ def run_module():
                 'source_posture_checks': source_posture_checks,
                 'rules': rules
             }
-            
+
             if policy_needs_update(existing_policy, update_params):
                 if not module.check_mode:
                     policy, _ = api.update_policy(
@@ -487,7 +487,7 @@ def run_module():
             # Create new policy
             if not name:
                 module.fail_json(msg="name is required when creating a new policy")
-            
+
             if not module.check_mode:
                 policy, _ = api.create_policy(
                     name=name,
@@ -511,5 +511,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

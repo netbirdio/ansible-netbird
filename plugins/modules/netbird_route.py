@@ -318,7 +318,7 @@ def run_module():
                 'keep_route': module.params['keep_route'],
                 'domains': module.params['domains'],
             }
-            
+
             if route_needs_update(existing_route, update_params):
                 if not module.check_mode:
                     route, _ = api.update_route(
@@ -349,7 +349,7 @@ def run_module():
                 module.fail_json(msg="network is required when creating a new route")
             if not module.params['peer_id'] and not module.params['peer_groups']:
                 module.fail_json(msg="Either peer_id or peer_groups is required when creating a new route")
-            
+
             if not module.check_mode:
                 route, _ = api.create_route(
                     network_id=network_id,
@@ -379,5 +379,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

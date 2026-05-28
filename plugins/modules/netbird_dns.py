@@ -290,7 +290,7 @@ def nsgroup_needs_update(current, params):
         desired_domains = set(params['domains'])
         if current_domains != desired_domains:
             return True
-    
+
     return False
 
 
@@ -335,13 +335,13 @@ def run_module():
         if resource_type == 'settings':
             # Handle DNS settings
             current_settings, _ = api.get_dns_settings()
-            
+
             if state == 'present':
                 disabled_groups = module.params['disabled_management_groups']
                 if disabled_groups is not None:
                     current_disabled = set(extract_ids(current_settings.get('disabled_management_groups') or []))
                     desired_disabled = set(extract_ids(disabled_groups or []))
-                    
+
                     if current_disabled != desired_disabled:
                         if not module.check_mode:
                             settings, _ = api.update_dns_settings(
@@ -355,7 +355,7 @@ def run_module():
                         result['dns_settings'] = current_settings
                 else:
                     result['dns_settings'] = current_settings
-            
+
             module.exit_json(**result)
 
         # Handle nameserver groups
@@ -429,7 +429,7 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new nameserver group")
             if not module.params['nameservers']:
                 module.fail_json(msg="nameservers is required when creating a new nameserver group")
-            
+
             if not module.check_mode:
                 group, _ = api.create_nameserver_group(
                     name=name,
@@ -456,5 +456,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

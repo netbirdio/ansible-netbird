@@ -309,7 +309,7 @@ def run_module():
                 'description': description,
                 'checks': checks
             }
-            
+
             if posture_check_needs_update(existing_check, update_params):
                 if not module.check_mode:
                     posture_check, _ = api.update_posture_check(
@@ -328,7 +328,7 @@ def run_module():
             # Create new posture check
             if not name:
                 module.fail_json(msg="name is required when creating a new posture check")
-            
+
             if not module.check_mode:
                 posture_check, _ = api.create_posture_check(
                     name=name,
@@ -350,5 +350,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
