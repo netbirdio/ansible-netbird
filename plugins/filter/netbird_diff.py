@@ -7,19 +7,16 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
+from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
+    extract_ids as _extract_ids,
+)
+
 
 def _extract_peer_id(peer):
     """Extract peer ID from either a dict or plain string."""
     if isinstance(peer, dict):
         return peer.get('id', '')
     return peer or ''
-
-
-def _extract_ids(items):
-    """Extract IDs from a list that may contain dicts or plain strings."""
-    if not items:
-        return []
-    return [item['id'] if isinstance(item, dict) else item for item in items]
 
 
 def _classify(desired_list, current_map, protected=None):
