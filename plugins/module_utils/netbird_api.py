@@ -37,10 +37,23 @@ class NetBirdAPIError(Exception):
         super().__init__(self.message)
 
 
+class NetBirdConnectionError(NetBirdAPIError):
+    """Connection failure reaching the NetBird API (DNS, network, refused).
+
+    Subclasses NetBirdAPIError so existing ``except NetBirdAPIError`` blocks
+    keep working; callers that need to distinguish a transient transport
+    failure from a real API error can catch this directly.
+    """
+
+
+class NetBirdSSLError(NetBirdAPIError):
+    """TLS / certificate verification failure reaching the NetBird API."""
+
+
 class NetBirdAPI:
     """NetBird API client for Ansible modules."""
 
-    def __init__(self, module, api_url, api_token, validate_certs=True):
+    def __init__(self, module, api_url, api_token, validate_certs=True, timeout=30):
         """
         Initialize the NetBird API client.
 
@@ -49,11 +62,13 @@ class NetBirdAPI:
             api_url: Base URL of the NetBird API
             api_token: Personal Access Token for authentication
             validate_certs: Whether to validate SSL certificates
+            timeout: Per-request timeout in seconds (default 30).
         """
         self.module = module
         self.api_url = api_url.rstrip('/')
         self.api_token = api_token
         self.validate_certs = validate_certs
+        self.timeout = timeout
         self.headers = {
             'Authorization': f'Token {api_token}',
             'Content-Type': 'application/json',
@@ -91,7 +106,7 @@ class NetBirdAPI:
                 headers=self.headers,
                 data=body,
                 validate_certs=self.validate_certs,
-                timeout=30
+                timeout=self.timeout,
             )
             status_code = response.getcode()
             response_body = response.read()
@@ -126,19 +141,22 @@ class NetBirdAPI:
                 response=response_data
             )
 
-        except URLError as e:
-            raise NetBirdAPIError(
-                f"Failed to connect to API: {str(e.reason)}",
-                status_code=-1,
-                response=None
-            )
-
         except ssl.SSLError as e:
-            raise NetBirdAPIError(
+            # ssl.SSLError is a subclass of OSError but raised directly by
+            # the TLS layer; catch it before URLError so a cert problem
+            # surfaces as a TLS error, not a generic connection error.
+            raise NetBirdSSLError(
                 f"SSL error: {str(e)}. Try setting validate_certs=false if using self-signed certificates.",
                 status_code=-1,
-                response=None
-            )
+                response=None,
+            ) from e
+
+        except URLError as e:
+            raise NetBirdConnectionError(
+                f"Failed to connect to API: {str(e.reason)}",
+                status_code=-1,
+                response=None,
+            ) from e
 
     def get(self, endpoint, params=None):
         """Make a GET request."""
@@ -183,7 +201,8 @@ class NetBirdAPI:
         params = {}
         if service_user is not None:
             params['service_user'] = str(service_user).lower()
-        return self.get('/api/users', params=params if params else None)
+        # _request already drops empty/None params, so no extra guard here.
+        return self.get('/api/users', params=params)
 
     def get_user(self, user_id):
         """Get a specific user."""
@@ -873,7 +892,11 @@ def netbird_argument_spec():
         validate_certs=dict(
             type='bool',
             default=True
-        )
+        ),
+        timeout=dict(
+            type='int',
+            default=30,
+        ),
     )
 
 
