@@ -1,0 +1,82 @@
+---
+name: ansible-test
+
+# Run sanity + unit tests on every push to main and every PR. The matrix
+# covers the ansible-core versions we explicitly support (declared via
+# `requires_ansible` in meta/runtime.yml). Integration tests are not run
+# here -- they require live NetBird credentials and live in the external
+# ansible-netbird-testing harness.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  sanity:
+    name: "sanity (ansible-core ${{ matrix.ansible }})"
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ansible:
+          - "2.15"
+          - "2.16"
+          - "2.17"
+        python:
+          - "3.10"
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v4
+        with:
+          # ansible-test requires the collection to live at
+          # ansible_collections/<namespace>/<name>/ in the workspace.
+          path: ansible_collections/community/ansible_netbird
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install ansible-core ${{ matrix.ansible }}
+        run: pip install "ansible-core>=${{ matrix.ansible }}.0,<${{ matrix.ansible }}.99"
+
+      - name: Run sanity tests
+        working-directory: ansible_collections/community/ansible_netbird
+        run: ansible-test sanity --docker default --color --python ${{ matrix.python }}
+
+  units:
+    name: "units (ansible-core ${{ matrix.ansible }})"
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ansible:
+          - "2.15"
+          - "2.16"
+          - "2.17"
+        python:
+          - "3.10"
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v4
+        with:
+          path: ansible_collections/community/ansible_netbird
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install ansible-core ${{ matrix.ansible }}
+        run: pip install "ansible-core>=${{ matrix.ansible }}.0,<${{ matrix.ansible }}.99"
+
+      - name: Run unit tests
+        working-directory: ansible_collections/community/ansible_netbird
+        run: ansible-test units --docker default --color --python ${{ matrix.python }} --coverage
+
+      - name: Generate coverage XML
+        if: always()
+        working-directory: ansible_collections/community/ansible_netbird
+        run: ansible-test coverage xml --requirements --group-by command --group-by version || true
