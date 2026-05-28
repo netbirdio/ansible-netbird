@@ -192,7 +192,7 @@ def run_module():
         # state == 'present'
         # Check if token with this name already exists
         existing_token = find_token_by_name(api, user_id, name)
-        
+
         if existing_token:
             # Token exists, return it (we can't update tokens)
             result['token'] = existing_token
@@ -230,5 +230,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

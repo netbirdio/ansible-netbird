@@ -250,7 +250,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def build_settings_update(module):
     """Build the settings update object from module parameters."""
     settings = {}
-    
+
     # Map module parameters to API settings fields
     param_mapping = {
         'peer_login_expiration_enabled': 'peer_login_expiration_enabled',
@@ -269,7 +269,7 @@ def build_settings_update(module):
         'ipv6_enabled_groups': 'ipv6_enabled_groups',
         'lazy_connection_enabled': 'lazy_connection_enabled'
     }
-    
+
     for param, api_field in param_mapping.items():
         value = module.params.get(param)
         if value is not None:
@@ -372,10 +372,10 @@ def run_module():
     try:
         # Get accounts
         accounts, _ = api.list_accounts()
-        
+
         if not accounts:
             module.fail_json(msg="No accounts found")
-        
+
         # Use specified account or first one
         if account_id:
             account = None
@@ -398,10 +398,10 @@ def run_module():
 
         # state == 'present'
         desired_settings = build_settings_update(module)
-        
+
         if desired_settings:
             current_settings = account.get('settings', {})
-            
+
             if settings_need_update(current_settings, desired_settings):
                 if not module.check_mode:
                     # Build full settings update
@@ -430,5 +430,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

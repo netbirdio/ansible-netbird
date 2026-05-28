@@ -36,5 +36,3 @@ options:
     default: 30
     version_added: "1.3.0"
 '''
-
-

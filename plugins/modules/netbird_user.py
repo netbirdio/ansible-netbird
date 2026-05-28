@@ -187,13 +187,13 @@ def user_needs_update(current, desired):
         if key in desired and desired[key] is not None:
             if current.get(key) != desired[key]:
                 return True
-    
+
     if 'auto_groups' in desired and desired['auto_groups'] is not None:
         current_groups = set(extract_ids(current.get('auto_groups') or []))
         desired_groups = set(extract_ids(desired['auto_groups'] or []))
         if current_groups != desired_groups:
             return True
-    
+
     return False
 
 
@@ -341,5 +341,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

@@ -109,7 +109,7 @@ data:
   description: The requested information.
   returned: success
   type: raw
-  sample: 
+  sample:
     - id: "peer-123"
       name: "my-server"
       ip: "100.64.0.1"
@@ -208,7 +208,7 @@ def run_module():
             module.fail_json(msg=f"Unknown resource type: {resource}")
 
         result['data'] = data
-        
+
         # Add count for list resources
         if isinstance(data, list):
             result['count'] = len(data)
@@ -225,5 +225,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
