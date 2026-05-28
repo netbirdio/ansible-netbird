@@ -1,0 +1,8 @@
+# Sanity-test ignore entries for ansible-core 2.15.
+#
+# Format: <path> <test-name>[!skip]
+# Docs:   https://docs.ansible.com/ansible-core/2.15/dev_guide/testing/sanity/ignores.html
+#
+# Each line should be paired with a tracking issue / PR. Empty for now;
+# populate as `ansible-test sanity --local` surfaces unavoidable warnings
+# that can't be fixed in the same PR.

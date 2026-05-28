@@ -1,0 +1,2 @@
+# Sanity-test ignore entries for ansible-core 2.17.
+# See ignore-2.15.txt for format / policy.
