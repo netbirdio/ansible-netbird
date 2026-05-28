@@ -294,8 +294,7 @@ def _normalize_port_ranges(rule):
     if prs is None:
         prs = rule.get('portRanges')
     return sorted(
-        [(pr.get('start'), pr.get('end')) for pr in (prs or []) if isinstance(pr, dict)],
-        key=str,
+        (pr.get('start'), pr.get('end')) for pr in (prs or []) if isinstance(pr, dict)
     )
 
 
