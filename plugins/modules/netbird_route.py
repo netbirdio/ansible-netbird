@@ -206,11 +206,11 @@ def route_needs_update(current, params):
     if params.get('description') is not None:
         if (current.get('description') or '') != (params['description'] or ''):
             return True
-    
+
     # Check peer
     if params.get('peer_id') is not None and current.get('peer') != params['peer_id']:
         return True
-    
+
     # Check peer_groups
     if params.get('peer_groups') is not None:
         current_groups = set(extract_ids(current.get('peer_groups') or []))
@@ -224,7 +224,16 @@ def route_needs_update(current, params):
         desired_groups = set(extract_ids(params['groups'] or []))
         if current_groups != desired_groups:
             return True
-    
+
+    # Domains are passed to api.update_route on every update path;
+    # omitting them here meant editing only `domains` produced an
+    # identical fingerprint and the change was silently dropped.
+    if params.get('domains') is not None:
+        current_domains = set(current.get('domains') or [])
+        desired_domains = set(params['domains'] or [])
+        if current_domains != desired_domains:
+            return True
+
     return False
 
 
@@ -306,7 +315,8 @@ def run_module():
                 'masquerade': module.params['masquerade'],
                 'enabled': module.params['enabled'],
                 'groups': module.params['groups'],
-                'keep_route': module.params['keep_route']
+                'keep_route': module.params['keep_route'],
+                'domains': module.params['domains'],
             }
             
             if route_needs_update(existing_route, update_params):
