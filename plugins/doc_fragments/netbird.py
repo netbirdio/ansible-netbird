@@ -28,6 +28,13 @@ options:
       - Whether to validate SSL certificates.
     type: bool
     default: true
+  timeout:
+    description:
+      - Per-request HTTP timeout in seconds.
+      - Applies to every call this module makes to the NetBird API.
+    type: int
+    default: 30
+    version_added: "1.3.0"
 '''
 
 
