@@ -253,6 +253,49 @@
           for a typo or a missing definition in your config files.
         success_msg: "Pre-flight validation passed — all references resolve."
 
+    # =====================================================================
+    # PHASE 0c: Strict-mode blast-radius guard (runs before ANY mutation)
+    #
+    # In strict mode every resource present on the control plane but absent
+    # from the loaded config is deleted (PHASE 5). If the config loaded with
+    # zero managed resources — a wrong/typo'd config_dir, an empty directory,
+    # or YAML files that silently failed to populate the expected variables —
+    # strict mode would classify EVERY policy, network, DNS entry, setup key,
+    # posture check and group as unmanaged and remove the lot. A strict apply
+    # against an empty config is never a legitimate operation (to clear the
+    # account, delete resources explicitly with state: absent), so refuse it
+    # here, before the mutation boundary, while nothing has been written.
+    # =====================================================================
+    - name: "Pre-flight: refuse strict apply against an empty config (no changes applied)"
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              (netbird_groups | default([])) +
+              (netbird_policies | default([])) +
+              (netbird_networks | default([])) +
+              (netbird_dns_nameserver_groups | default([])) +
+              (netbird_dns_zones | default([])) +
+              (netbird_setup_keys | default([])) +
+              (netbird_posture_checks | default([]))
+            ) | length > 0
+        quiet: true
+        fail_msg: |
+          Pre-flight validation failed — NO changes were applied.
+
+          Strict mode (strict=true) is enabled but the configuration loaded from
+          {{ _config_dir_abs }}/ contains zero managed resources. A strict apply
+          deletes everything on the control plane that is not in the config, so
+          from an empty config it would remove ALL groups, policies, networks,
+          DNS nameserver groups, DNS zones, setup keys and posture checks.
+
+          This almost always means config_dir points at the wrong place or the
+          YAML files failed to load. Verify the path and re-run. If you genuinely
+          intend to remove resources, declare them explicitly with state: absent
+          rather than relying on an empty strict apply.
+        success_msg: "Pre-flight validation passed — strict apply has a non-empty config."
+      when: commit | bool and strict | bool
+
     # All pre-flight gates passed. From here on, an apply (commit=true) may
     # mutate the control plane, so a failure below means a *partial* apply.
     # The rescue at the end of this block uses this flag to tell the operator
