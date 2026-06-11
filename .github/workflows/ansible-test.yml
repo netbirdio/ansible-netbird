@@ -20,6 +20,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege token: this workflow only reads the repo to run tests.
+permissions:
+  contents: read
+
 jobs:
   sanity:
     name: "sanity (ansible-core ${{ matrix.ansible }}, py${{ matrix.python }})"
@@ -48,14 +52,14 @@ jobs:
             python: "3.9"
     steps:
       - name: Check out collection
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           # ansible-test requires the collection to live at
           # ansible_collections/<namespace>/<name>/ in the workspace.
           path: ansible_collections/community/ansible_netbird
 
       - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: ${{ matrix.python }}
 
@@ -90,12 +94,12 @@ jobs:
             python: "3.9"
     steps:
       - name: Check out collection
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           path: ansible_collections/community/ansible_netbird
 
       - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with:
           python-version: ${{ matrix.python }}
 
@@ -113,7 +117,7 @@ jobs:
 
       - name: Upload coverage XML
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
           name: coverage-ansible-${{ matrix.ansible }}-py${{ matrix.python }}
           path: ansible_collections/community/ansible_netbird/tests/output/reports/coverage*.xml
