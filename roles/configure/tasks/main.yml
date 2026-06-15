@@ -457,6 +457,11 @@
       loop_control:
         label: "{{ item.name }}"
       register: netbird_setup_key_results
+      # On creation the result carries the one-time plaintext key. Without
+      # no_log, running at -v or higher dumps every created key to the job
+      # log. The gated "Display created setup key values" task below is the
+      # sanctioned (opt-in) way to reveal them.
+      no_log: true
       when:
         - commit | bool
         - netbird_setup_keys | default([]) | length > 0
