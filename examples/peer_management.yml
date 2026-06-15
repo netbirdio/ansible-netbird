@@ -88,4 +88,3 @@
     #   loop_control:
     #     label: "{{ item.name }}"
     #   when: stale_peers | length > 0
-

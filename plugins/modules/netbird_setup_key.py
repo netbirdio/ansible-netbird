@@ -38,8 +38,8 @@ options:
   key_type:
     description:
       - Type of the setup key.
-      - 'one-off' keys can only be used once.
-      - 'reusable' keys can be used multiple times.
+      - "C(one-off) keys can only be used once."
+      - "C(reusable) keys can be used multiple times."
     type: str
     choices: ['one-off', 'reusable']
     default: one-off

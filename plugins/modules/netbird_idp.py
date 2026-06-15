@@ -58,7 +58,6 @@ options:
       - Required when creating a new identity provider.
       - This value is write-only and never returned by the API.
     type: str
-    no_log: true
 extends_documentation_fragment:
   - community.ansible_netbird.netbird
 requirements:

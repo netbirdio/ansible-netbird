@@ -15,7 +15,7 @@ short_description: Manage NetBird peers
 description:
   - Update and delete peers in NetBird.
   - Peers are devices/machines connected to the NetBird network.
-  - Note: Peers are registered using setup keys, not created via API.
+  - "Note: Peers are registered using setup keys, not created via API."
 version_added: "1.0.0"
 author:
   - Community

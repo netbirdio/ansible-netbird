@@ -14,7 +14,7 @@ module: netbird_route
 short_description: Manage NetBird routes (deprecated API)
 description:
   - Create, update, and delete routes in NetBird.
-  - Note: This uses the deprecated routes API. Consider using networks for new implementations.
+  - "Note: This uses the deprecated routes API. Consider using networks for new implementations."
 version_added: "1.0.0"
 author:
   - Community

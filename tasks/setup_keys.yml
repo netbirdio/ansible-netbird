@@ -20,4 +20,3 @@
     label: "{{ item.name }}"
   register: netbird_created_setup_keys
   when: netbird_setup_keys | length > 0
-

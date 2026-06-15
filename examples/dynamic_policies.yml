@@ -85,4 +85,3 @@
       when: >
         (item.source_groups | difference(group_map.keys() | list) | length == 0) and
         (item.destination_groups | difference(group_map.keys() | list) | length == 0)
-
