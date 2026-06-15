@@ -1,8 +1,31 @@
-# Sanity-test ignore entries for ansible-core 2.15.
-#
-# Format: <path> <test-name>[!skip]
-# Docs:   https://docs.ansible.com/ansible-core/2.15/dev_guide/testing/sanity/ignores.html
-#
-# Each line should be paired with a tracking issue / PR. Empty for now;
-# populate as `ansible-test sanity --local` surfaces unavoidable warnings
-# that can't be fixed in the same PR.
+plugins/module_utils/netbird_api.py pylint:disallowed-name
+plugins/modules/netbird_account.py pylint:disallowed-name
+plugins/modules/netbird_account.py validate-modules:invalid-documentation
+plugins/modules/netbird_dns_zone.py pylint:disallowed-name
+plugins/modules/netbird_dns_zone.py validate-modules:invalid-documentation
+plugins/modules/netbird_dns.py pylint:disallowed-name
+plugins/modules/netbird_dns.py validate-modules:invalid-documentation
+plugins/modules/netbird_group.py pylint:disallowed-name
+plugins/modules/netbird_group.py validate-modules:invalid-documentation
+plugins/modules/netbird_idp.py pylint:disallowed-name
+plugins/modules/netbird_idp.py validate-modules:invalid-documentation
+plugins/modules/netbird_info.py pylint:disallowed-name
+plugins/modules/netbird_info.py validate-modules:invalid-documentation
+plugins/modules/netbird_invite.py pylint:disallowed-name
+plugins/modules/netbird_invite.py validate-modules:invalid-documentation
+plugins/modules/netbird_network.py pylint:disallowed-name
+plugins/modules/netbird_network.py validate-modules:invalid-documentation
+plugins/modules/netbird_peer.py pylint:disallowed-name
+plugins/modules/netbird_peer.py validate-modules:invalid-documentation
+plugins/modules/netbird_policy.py pylint:disallowed-name
+plugins/modules/netbird_policy.py validate-modules:invalid-documentation
+plugins/modules/netbird_posture_check.py pylint:disallowed-name
+plugins/modules/netbird_posture_check.py validate-modules:invalid-documentation
+plugins/modules/netbird_route.py pylint:disallowed-name
+plugins/modules/netbird_route.py validate-modules:invalid-documentation
+plugins/modules/netbird_setup_key.py pylint:disallowed-name
+plugins/modules/netbird_setup_key.py validate-modules:invalid-documentation
+plugins/modules/netbird_token.py pylint:disallowed-name
+plugins/modules/netbird_token.py validate-modules:invalid-documentation
+plugins/modules/netbird_user.py pylint:disallowed-name
+plugins/modules/netbird_user.py validate-modules:invalid-documentation

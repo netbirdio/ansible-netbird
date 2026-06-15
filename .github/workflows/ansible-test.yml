@@ -30,26 +30,20 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
+      # Sanity is a static-quality gate (pep8, pylint, validate-modules,
+      # ansible-doc, yamllint) and its ruleset is keyed to the ansible-core
+      # version, not the target Python — so run it once per ansible-core
+      # rather than across the whole Python matrix. Python 3.11 is supported
+      # as a controller by every ansible-core in the matrix (2.15 supports
+      # 3.9-3.11; 2.16/2.17 support 3.10-3.12). The Python matrix lives on
+      # the units job below, where runtime Python version actually matters.
       matrix:
         ansible:
           - "2.15"
           - "2.16"
           - "2.17"
         python:
-          - "3.9"
-          - "3.10"
           - "3.11"
-          - "3.12"
-        # ansible-core 2.15 supports Python 3.9-3.11; 2.16/2.17 support
-        # 3.10-3.12. Skip controller/python combos that ansible-core
-        # itself refuses.
-        exclude:
-          - ansible: "2.15"
-            python: "3.12"
-          - ansible: "2.16"
-            python: "3.9"
-          - ansible: "2.17"
-            python: "3.9"
     steps:
       - name: Check out collection
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
