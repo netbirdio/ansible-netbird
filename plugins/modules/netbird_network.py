@@ -18,7 +18,7 @@ description:
   - This module provides full routing capabilities, replacing the deprecated routes API.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -325,7 +325,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_network_by_name(api, name):
     """Find a network by name."""
-    networks, _ = api.list_networks()
+    networks, _unused = api.list_networks()
     for network in (networks or []):
         if network.get('name') == name:
             return network
@@ -378,11 +378,11 @@ def resource_needs_update(current, desired):
 def sync_routers(api, module, network_id, desired_routers):
     """Synchronize routers for a network. Returns (changed, routers_list)."""
     changed = False
-    
+
     # Get current routers
-    current_routers, _ = api.list_network_routers(network_id)
+    current_routers, _unused = api.list_network_routers(network_id)
     current_by_key = {get_router_key(r): r for r in (current_routers or [])}
-    
+
     # Build desired routers map
     desired_by_key = {}
     for router in desired_routers:
@@ -390,19 +390,19 @@ def sync_routers(api, module, network_id, desired_routers):
         peer_groups = router.get('peer_groups') or []
         key = (peer, tuple(sorted(peer_groups)))
         desired_by_key[key] = router
-    
+
     final_routers = []
-    
+
     # Create or update routers
     for key, desired in desired_by_key.items():
         peer, peer_groups_tuple = key
         peer_groups = list(peer_groups_tuple) if peer_groups_tuple else None
-        
+
         if key in current_by_key:
             current = current_by_key[key]
             if router_needs_update(current, desired):
                 if not module.check_mode:
-                    updated, _ = api.update_network_router(
+                    updated, _unused = api.update_network_router(
                         network_id,
                         current['id'],
                         peer_id=peer if peer else None,
@@ -420,7 +420,7 @@ def sync_routers(api, module, network_id, desired_routers):
         else:
             # Create new router
             if not module.check_mode:
-                created, _ = api.create_network_router(
+                created, _unused = api.create_network_router(
                     network_id,
                     peer_id=peer if peer else None,
                     peer_groups=peer_groups,
@@ -430,37 +430,37 @@ def sync_routers(api, module, network_id, desired_routers):
                 )
                 final_routers.append(created)
             changed = True
-    
+
     # Delete routers not in desired state
     for key, current in current_by_key.items():
         if key not in desired_by_key:
             if not module.check_mode:
                 api.delete_network_router(network_id, current['id'])
             changed = True
-    
+
     return changed, final_routers
 
 
 def sync_resources(api, module, network_id, desired_resources):
     """Synchronize resources for a network. Returns (changed, resources_list)."""
     changed = False
-    
+
     # Get current resources
-    current_resources, _ = api.list_network_resources(network_id)
+    current_resources, _unused = api.list_network_resources(network_id)
     current_by_address = {r.get('address'): r for r in (current_resources or [])}
-    
+
     # Build desired resources map
     desired_by_address = {r['address']: r for r in desired_resources}
-    
+
     final_resources = []
-    
+
     # Create or update resources
     for address, desired in desired_by_address.items():
         if address in current_by_address:
             current = current_by_address[address]
             if resource_needs_update(current, desired):
                 if not module.check_mode:
-                    updated, _ = api.update_network_resource(
+                    updated, _unused = api.update_network_resource(
                         network_id,
                         current['id'],
                         address=address,
@@ -478,7 +478,7 @@ def sync_resources(api, module, network_id, desired_resources):
         else:
             # Create new resource
             if not module.check_mode:
-                created, _ = api.create_network_resource(
+                created, _unused = api.create_network_resource(
                     network_id,
                     address=address,
                     name=desired.get('name', ''),
@@ -488,14 +488,14 @@ def sync_resources(api, module, network_id, desired_resources):
                 )
                 final_resources.append(created)
             changed = True
-    
+
     # Delete resources not in desired state
     for address, current in current_by_address.items():
         if address not in desired_by_address:
             if not module.check_mode:
                 api.delete_network_resource(network_id, current['id'])
             changed = True
-    
+
     return changed, final_resources
 
 
@@ -567,7 +567,7 @@ def run_module():
         existing_network = None
         if network_id:
             try:
-                existing_network, _ = api.get_network(network_id)
+                existing_network, _unused = api.get_network(network_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -584,19 +584,19 @@ def run_module():
 
         # state == 'present'
         network_changed = False
-        
+
         if existing_network:
             current_network_id = existing_network['id']
-            
+
             # Check if network metadata needs update
             update_params = {
                 'name': name,
                 'description': description
             }
-            
+
             if network_needs_update(existing_network, update_params):
                 if not module.check_mode:
-                    network, _ = api.update_network(
+                    network, _unused = api.update_network(
                         current_network_id,
                         name=name,
                         description=description
@@ -611,9 +611,9 @@ def run_module():
             # Create new network
             if not name:
                 module.fail_json(msg="name is required when creating a new network")
-            
+
             if not module.check_mode:
-                network, _ = api.create_network(
+                network, _unused = api.create_network(
                     name=name,
                     description=description
                 )
@@ -647,7 +647,7 @@ def run_module():
 
         # Refresh network data to get updated counts
         if not module.check_mode and (routers is not None or resources is not None):
-            refreshed_network, _ = api.get_network(current_network_id)
+            refreshed_network, _unused = api.get_network(current_network_id)
             # Preserve the routers/resources lists we built
             saved_routers = result['network'].get('routers')
             saved_resources = result['network'].get('resources')

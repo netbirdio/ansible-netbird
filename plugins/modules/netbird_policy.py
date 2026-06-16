@@ -17,7 +17,7 @@ description:
   - Policies define network access rules between groups.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -240,7 +240,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_policy_by_name(api, name):
     """Find a policy by name."""
-    policies, _ = api.list_policies()
+    policies, _unused = api.list_policies()
     for policy in (policies or []):
         if policy.get('name') == name:
             return policy
@@ -441,7 +441,7 @@ def run_module():
         existing_policy = None
         if policy_id:
             try:
-                existing_policy, _ = api.get_policy(policy_id)
+                existing_policy, _unused = api.get_policy(policy_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -466,10 +466,10 @@ def run_module():
                 'source_posture_checks': source_posture_checks,
                 'rules': rules
             }
-            
+
             if policy_needs_update(existing_policy, update_params):
                 if not module.check_mode:
-                    policy, _ = api.update_policy(
+                    policy, _unused = api.update_policy(
                         existing_policy['id'],
                         name=name,
                         enabled=enabled,
@@ -487,9 +487,9 @@ def run_module():
             # Create new policy
             if not name:
                 module.fail_json(msg="name is required when creating a new policy")
-            
+
             if not module.check_mode:
-                policy, _ = api.create_policy(
+                policy, _unused = api.create_policy(
                     name=name,
                     enabled=enabled,
                     description=description,
@@ -511,5 +511,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

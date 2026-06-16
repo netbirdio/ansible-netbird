@@ -21,4 +21,3 @@
     lazy_connection_enabled: "{{ netbird_account_settings.lazy_connection_enabled | default(omit) }}"
     state: present
   when: netbird_account_settings | length > 0
-

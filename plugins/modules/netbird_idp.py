@@ -17,7 +17,7 @@ description:
   - Identity providers are used to authenticate users via OIDC-compatible providers.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -58,7 +58,6 @@ options:
       - Required when creating a new identity provider.
       - This value is write-only and never returned by the API.
     type: str
-    no_log: true
 extends_documentation_fragment:
   - community.ansible_netbird.netbird
 requirements:
@@ -136,7 +135,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_idp_by_name(api, name):
     """Find an identity provider by name."""
-    idps, _ = api.list_identity_providers()
+    idps, _unused = api.list_identity_providers()
     for idp in (idps or []):
         if idp.get('name') == name:
             return idp
@@ -215,7 +214,7 @@ def run_module():
         existing_idp = None
         if idp_id:
             try:
-                existing_idp, _ = api.get_identity_provider(idp_id)
+                existing_idp, _unused = api.get_identity_provider(idp_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -242,7 +241,7 @@ def run_module():
 
             if idp_needs_update(existing_idp, desired):
                 if not module.check_mode:
-                    idp, _ = api.update_identity_provider(
+                    idp, _unused = api.update_identity_provider(
                         existing_idp['id'],
                         name=name,
                         idp_type=idp_type,
@@ -262,7 +261,7 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new identity provider")
 
             if not module.check_mode:
-                idp, _ = api.create_identity_provider(
+                idp, _unused = api.create_identity_provider(
                     name=name,
                     idp_type=idp_type,
                     issuer=issuer,

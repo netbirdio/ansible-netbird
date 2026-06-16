@@ -29,5 +29,3 @@ options:
     type: bool
     default: true
 '''
-
-

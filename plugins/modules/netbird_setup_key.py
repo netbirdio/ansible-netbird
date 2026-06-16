@@ -17,7 +17,7 @@ description:
   - Setup keys are used to register new peers to the network.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -38,8 +38,8 @@ options:
   key_type:
     description:
       - Type of the setup key.
-      - 'one-off' keys can only be used once.
-      - 'reusable' keys can be used multiple times.
+      - "C(one-off) keys can only be used once."
+      - "C(reusable) keys can be used multiple times."
     type: str
     choices: ['one-off', 'reusable']
     default: one-off
@@ -185,7 +185,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_setup_key_by_name(api, name):
     """Find a setup key by name."""
-    keys, _ = api.list_setup_keys()
+    keys, _unused = api.list_setup_keys()
     for key in (keys or []):
         if key.get('name') == name:
             return key
@@ -251,7 +251,7 @@ def run_module():
         existing_key = None
         if key_id:
             try:
-                existing_key, _ = api.get_setup_key(key_id)
+                existing_key, _unused = api.get_setup_key(key_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -282,7 +282,7 @@ def run_module():
 
             if setup_key_needs_update(existing_key, update_params):
                 if not module.check_mode:
-                    key, _ = api.update_setup_key(
+                    key, _unused = api.update_setup_key(
                         existing_key['id'],
                         revoked=module.params['revoked'],
                         auto_groups=effective_auto_groups
@@ -299,7 +299,7 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new setup key")
 
             if not module.check_mode:
-                key, _ = api.create_setup_key(
+                key, _unused = api.create_setup_key(
                     name=name,
                     key_type=module.params['key_type'],
                     expires_in=module.params['expires_in'],
@@ -324,5 +324,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

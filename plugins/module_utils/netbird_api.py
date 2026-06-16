@@ -187,7 +187,7 @@ class NetBirdAPI:
 
     def get_user(self, user_id):
         """Get a specific user."""
-        users, _ = self.list_users()
+        users, _unused = self.list_users()
         for user in users:
             if user.get('id') == user_id:
                 return user, 200
@@ -505,7 +505,7 @@ class NetBirdAPI:
         }
         return self.post(f'/api/networks/{network_id}/resources', data=data)
 
-    def update_network_resource(self, network_id, resource_id, address=None, name=None, 
+    def update_network_resource(self, network_id, resource_id, address=None, name=None,
                                 description=None, enabled=None, groups=None):
         """Update a network resource."""
         data = {}
@@ -556,8 +556,8 @@ class NetBirdAPI:
             data['domains'] = domains
         return self.post('/api/routes', data=data)
 
-    def update_route(self, route_id, network_id=None, network=None, description=None, 
-                     peer_id=None, peer_groups=None, metric=None, masquerade=None, 
+    def update_route(self, route_id, network_id=None, network=None, description=None,
+                     peer_id=None, peer_groups=None, metric=None, masquerade=None,
                      enabled=None, groups=None, keep_route=None, domains=None):
         """Update a route."""
         data = {}
@@ -609,9 +609,9 @@ class NetBirdAPI:
         """Get a specific nameserver group."""
         return self.get(f'/api/dns/nameservers/{nsgroup_id}')
 
-    def create_nameserver_group(self, name, nameservers, description='', groups=None, 
-                                 domains=None, enabled=True, primary=False, 
-                                 search_domains_enabled=True):
+    def create_nameserver_group(self, name, nameservers, description='', groups=None,
+                                domains=None, enabled=True, primary=False,
+                                search_domains_enabled=True):
         """Create a new nameserver group."""
         data = {
             'name': name,
@@ -626,8 +626,8 @@ class NetBirdAPI:
         return self.post('/api/dns/nameservers', data=data)
 
     def update_nameserver_group(self, nsgroup_id, name=None, nameservers=None, description=None,
-                                 groups=None, domains=None, enabled=None, primary=None,
-                                 search_domains_enabled=None):
+                                groups=None, domains=None, enabled=None, primary=None,
+                                search_domains_enabled=None):
         """Update a nameserver group."""
         data = {}
         if name is not None:
@@ -662,7 +662,7 @@ class NetBirdAPI:
         return self.get(f'/api/dns/zones/{zone_id}')
 
     def create_dns_zone(self, name, domain, enabled=True, distribution_groups=None,
-                         enable_search_domain=False):
+                        enable_search_domain=False):
         """Create a new DNS zone."""
         data = {
             'name': name,
@@ -674,7 +674,7 @@ class NetBirdAPI:
         return self.post('/api/dns/zones', data=data)
 
     def update_dns_zone(self, zone_id, name=None, domain=None, enabled=None,
-                         distribution_groups=None, enable_search_domain=None):
+                        distribution_groups=None, enable_search_domain=None):
         """Update a DNS zone."""
         data = {}
         if name is not None:
@@ -875,5 +875,3 @@ def netbird_argument_spec():
             default=True
         )
     )
-
-

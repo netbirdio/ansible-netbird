@@ -17,7 +17,7 @@ description:
   - Useful for dynamic inventory or gathering facts.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   resource:
     description:
@@ -108,7 +108,7 @@ data:
   description: The requested information.
   returned: success
   type: raw
-  sample: 
+  sample:
     - id: "peer-123"
       name: "my-server"
       ip: "100.64.0.1"
@@ -165,45 +165,45 @@ def run_module():
     try:
         # Map resource types to API methods
         if resource == 'accounts':
-            data, _ = api.list_accounts()
+            data, _unused = api.list_accounts()
         elif resource == 'users':
             service_user = module.params.get('service_user')
-            data, _ = api.list_users(service_user=service_user)
+            data, _unused = api.list_users(service_user=service_user)
         elif resource == 'current_user':
-            data, _ = api.get_current_user()
+            data, _unused = api.get_current_user()
         elif resource == 'peers':
-            data, _ = api.list_peers()
+            data, _unused = api.list_peers()
         elif resource == 'groups':
-            data, _ = api.list_groups()
+            data, _unused = api.list_groups()
         elif resource == 'setup_keys':
-            data, _ = api.list_setup_keys()
+            data, _unused = api.list_setup_keys()
         elif resource == 'policies':
-            data, _ = api.list_policies()
+            data, _unused = api.list_policies()
         elif resource == 'networks':
-            data, _ = api.list_networks()
+            data, _unused = api.list_networks()
         elif resource == 'routes':
-            data, _ = api.list_routes()
+            data, _unused = api.list_routes()
         elif resource == 'dns_nameservers':
-            data, _ = api.list_nameserver_groups()
+            data, _unused = api.list_nameserver_groups()
         elif resource == 'dns_zones':
-            data, _ = api.list_dns_zones()
+            data, _unused = api.list_dns_zones()
         elif resource == 'dns_settings':
-            data, _ = api.get_dns_settings()
+            data, _unused = api.get_dns_settings()
         elif resource == 'posture_checks':
-            data, _ = api.list_posture_checks()
+            data, _unused = api.list_posture_checks()
         elif resource == 'events':
-            data, _ = api.list_events()
+            data, _unused = api.list_events()
         elif resource == 'countries':
-            data, _ = api.list_countries()
+            data, _unused = api.list_countries()
         elif resource == 'identity_providers':
-            data, _ = api.list_identity_providers()
+            data, _unused = api.list_identity_providers()
         elif resource == 'invites':
-            data, _ = api.list_user_invites()
+            data, _unused = api.list_user_invites()
         else:
             module.fail_json(msg=f"Unknown resource type: {resource}")
 
         result['data'] = data
-        
+
         # Add count for list resources
         if isinstance(data, list):
             result['count'] = len(data)
@@ -220,5 +220,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

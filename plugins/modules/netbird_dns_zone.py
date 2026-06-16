@@ -18,7 +18,7 @@ description:
   - Zones are matched by name. Records within a zone are matched by name + type.
 version_added: "1.1.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -175,7 +175,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_zone_by_name(api, name):
     """Find a DNS zone by name."""
-    zones, _ = api.list_dns_zones()
+    zones, _unused = api.list_dns_zones()
     for zone in (zones or []):
         if zone.get('name') == name:
             return zone
@@ -219,7 +219,7 @@ def sync_records(api, module, zone_id, desired_records):
     changed = False
 
     # Get current records
-    current_records, _ = api.list_dns_zone_records(zone_id)
+    current_records, _unused = api.list_dns_zone_records(zone_id)
     current_by_key = {get_record_key(r): r for r in (current_records or [])}
 
     # Build desired records map
@@ -238,7 +238,7 @@ def sync_records(api, module, zone_id, desired_records):
             current = current_by_key[key]
             if record_needs_update(current, desired):
                 if not module.check_mode:
-                    updated, _ = api.update_dns_zone_record(
+                    updated, _unused = api.update_dns_zone_record(
                         zone_id,
                         current['id'],
                         name=name,
@@ -255,7 +255,7 @@ def sync_records(api, module, zone_id, desired_records):
         else:
             # Create new record
             if not module.check_mode:
-                new_record, _ = api.create_dns_zone_record(
+                new_record, _unused = api.create_dns_zone_record(
                     zone_id,
                     name=name,
                     record_type=record_type,
@@ -334,7 +334,7 @@ def run_module():
         existing_zone = None
         if zone_id:
             try:
-                existing_zone, _ = api.get_dns_zone(zone_id)
+                existing_zone, _unused = api.get_dns_zone(zone_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -366,7 +366,7 @@ def run_module():
 
             if zone_needs_update(existing_zone, update_params):
                 if not module.check_mode:
-                    zone, _ = api.update_dns_zone(
+                    zone, _unused = api.update_dns_zone(
                         current_zone_id,
                         name=name,
                         domain=domain,
@@ -388,7 +388,7 @@ def run_module():
                 module.fail_json(msg="domain is required when creating a new DNS zone")
 
             if not module.check_mode:
-                zone, _ = api.create_dns_zone(
+                zone, _unused = api.create_dns_zone(
                     name=name,
                     domain=domain,
                     enabled=enabled,

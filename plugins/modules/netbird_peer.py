@@ -15,10 +15,10 @@ short_description: Manage NetBird peers
 description:
   - Update and delete peers in NetBird.
   - Peers are devices/machines connected to the NetBird network.
-  - Note: Peers are registered using setup keys, not created via API.
+  - "Note: Peers are registered using setup keys, not created via API."
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -217,7 +217,7 @@ def run_module():
     try:
         # Get existing peer
         try:
-            existing_peer, _ = api.get_peer(peer_id)
+            existing_peer, _unused = api.get_peer(peer_id)
         except NetBirdAPIError as e:
             if e.status_code == 404:
                 if state == 'absent':
@@ -244,7 +244,7 @@ def run_module():
 
         if peer_needs_update(existing_peer, update_params):
             if not module.check_mode:
-                peer, _ = api.update_peer(
+                peer, _unused = api.update_peer(
                     peer_id,
                     name=module.params['name'],
                     ssh_enabled=module.params['ssh_enabled'],
@@ -272,5 +272,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

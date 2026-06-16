@@ -1,0 +1,34 @@
+---
+ancestor: null
+releases:
+  1.0.0:
+    release_date: "2024-12-01"
+    changes:
+      release_summary: |
+        Initial release of community.ansible_netbird. Provides modules to
+        manage NetBird groups, peers, policies, networks, setup keys, DNS
+        nameservers and zones, posture checks, users / service users,
+        invites, identity providers, tokens, accounts, and routes (legacy).
+        Includes ``configure`` and ``export`` roles for IaC workflows.
+  1.1.0:
+    release_date: "2025-02-15"
+    changes:
+      minor_changes:
+        - "netbird_account: add support for the ``extra_*``, ``auto_update_*``, ``peer_expose_*``, ``lazy_connection_enabled``, ``network_range``, and ``dns_domain`` settings."
+        - "netbird_idp: add ``pocketid`` as a supported identity-provider type."
+        - "netbird_dns_zone: new module for managing DNS zones."
+  1.2.0:
+    release_date: "2026-05-28"
+    changes:
+      release_summary: |
+        Quality-focused release: tightens reference validation across the
+        configure role, prevents silent drops on partial-update fields,
+        and fixes several round-trip / export consistency issues.
+      bugfixes:
+        - "export role: export peer-based policy sources via ``sourceResource`` fallback so peer-resource-bound policies survive round-trip (PR #31)."
+        - "export role / netbird_dns: null-guard DNS nameserver ``domains`` and ``groups`` on export and update so the dashboard does not crash on legacy ``null`` state."
+        - "configure role: raise on unresolved group / peer / posture_check references instead of silently dropping them; add hostname aliases for peer lookup (PR #33)."
+        - "netbird_dns: heal DNS nameserver group ``domains=null`` to ``[]`` at the module layer when applying config (PR #34)."
+        - "configure role: normalise a relative ``config_dir`` against the controller CWD so ``include_vars: dir:`` resolves correctly (PR #35)."
+      security_fixes:
+        - "roles (configure, export): add ``no_log: true`` to raw ``ansible.builtin.uri`` tasks that interpolate ``Authorization: Token ...`` headers, preventing bearer-token leak under ``-vvvv`` (PR #36)."
