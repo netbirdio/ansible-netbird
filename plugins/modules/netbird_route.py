@@ -188,7 +188,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_route_by_network_id(api, network_id):
     """Find a route by network ID."""
-    routes, _ = api.list_routes()
+    routes, _unused = api.list_routes()
     for route in (routes or []):
         if route.get('network_id') == network_id:
             return route
@@ -289,7 +289,7 @@ def run_module():
         existing_route = None
         if route_id:
             try:
-                existing_route, _ = api.get_route(route_id)
+                existing_route, _unused = api.get_route(route_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -322,7 +322,7 @@ def run_module():
 
             if route_needs_update(existing_route, update_params):
                 if not module.check_mode:
-                    route, _ = api.update_route(
+                    route, _unused = api.update_route(
                         existing_route['id'],
                         network_id=network_id,
                         network=module.params['network'],
@@ -352,7 +352,7 @@ def run_module():
                 module.fail_json(msg="Either peer_id or peer_groups is required when creating a new route")
 
             if not module.check_mode:
-                route, _ = api.create_route(
+                route, _unused = api.create_route(
                     network_id=network_id,
                     network=module.params['network'],
                     description=module.params['description'],

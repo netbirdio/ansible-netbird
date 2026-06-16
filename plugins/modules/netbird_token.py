@@ -124,7 +124,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_token_by_name(api, user_id, name):
     """Find a token by name for a specific user."""
-    tokens, _ = api.list_tokens(user_id)
+    tokens, _unused = api.list_tokens(user_id)
     for token in (tokens or []):
         if token.get('name') == name:
             return token
@@ -200,7 +200,7 @@ def run_module():
         else:
             # Create new token
             if not module.check_mode:
-                token, _ = api.create_token(
+                token, _unused = api.create_token(
                     user_id,
                     name=name,
                     expires_in=expires_in

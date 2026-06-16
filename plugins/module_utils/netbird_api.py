@@ -236,7 +236,7 @@ class NetBirdAPI:
 
     def get_user(self, user_id):
         """Get a specific user."""
-        users, _ = self.list_users()
+        users, _unused = self.list_users()
         for user in users:
             if user.get('id') == user_id:
                 return user, 200
