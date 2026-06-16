@@ -17,7 +17,7 @@ description:
   - Tokens are used for API authentication.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
