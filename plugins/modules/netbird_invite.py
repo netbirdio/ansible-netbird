@@ -154,7 +154,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_invite_by_email(api, email):
     """Find a user invite by email address."""
-    invites, _ = api.list_user_invites()
+    invites, _unused = api.list_user_invites()
     for invite in (invites or []):
         if invite.get('email') == email:
             return invite
@@ -227,7 +227,7 @@ def run_module():
             if regenerate:
                 # Regenerate the invite token
                 if not module.check_mode:
-                    invite, _ = api.regenerate_user_invite(
+                    invite, _unused = api.regenerate_user_invite(
                         existing_invite['id'],
                         expires_in=expires_in
                     )
@@ -242,7 +242,7 @@ def run_module():
         else:
             # Create new invite
             if not module.check_mode:
-                invite, _ = api.create_user_invite(
+                invite, _unused = api.create_user_invite(
                     email=email,
                     name=name,
                     role=role,

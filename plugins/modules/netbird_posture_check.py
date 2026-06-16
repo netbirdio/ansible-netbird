@@ -217,7 +217,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_posture_check_by_name(api, name):
     """Find a posture check by name."""
-    checks, _ = api.list_posture_checks()
+    checks, _unused = api.list_posture_checks()
     for check in (checks or []):
         if check.get('name') == name:
             return check
@@ -286,7 +286,7 @@ def run_module():
         existing_check = None
         if check_id:
             try:
-                existing_check, _ = api.get_posture_check(check_id)
+                existing_check, _unused = api.get_posture_check(check_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -312,7 +312,7 @@ def run_module():
 
             if posture_check_needs_update(existing_check, update_params):
                 if not module.check_mode:
-                    posture_check, _ = api.update_posture_check(
+                    posture_check, _unused = api.update_posture_check(
                         existing_check['id'],
                         name=name,
                         description=description,
@@ -330,7 +330,7 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new posture check")
 
             if not module.check_mode:
-                posture_check, _ = api.create_posture_check(
+                posture_check, _unused = api.create_posture_check(
                     name=name,
                     description=description,
                     checks=checks or {}

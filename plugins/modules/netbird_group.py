@@ -123,7 +123,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_group_by_name(api, name):
     """Find a group by name."""
-    groups, _ = api.list_groups()
+    groups, _unused = api.list_groups()
     for group in (groups or []):
         if group.get('name') == name:
             return group
@@ -211,7 +211,7 @@ def run_module():
         existing_group = None
         if group_id:
             try:
-                existing_group, _ = api.get_group(group_id)
+                existing_group, _unused = api.get_group(group_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -244,7 +244,7 @@ def run_module():
 
             if group_needs_update(existing_group, desired):
                 if not module.check_mode:
-                    group, _ = api.update_group(
+                    group, _unused = api.update_group(
                         existing_group['id'],
                         name=name,
                         peers=effective_peer_ids,
@@ -262,7 +262,7 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new group")
 
             if not module.check_mode:
-                group, _ = api.create_group(
+                group, _unused = api.create_group(
                     name=name,
                     peers=peers or [],
                     resources=resources

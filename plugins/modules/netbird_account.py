@@ -356,7 +356,7 @@ def run_module():
 
     try:
         # Get accounts
-        accounts, _ = api.list_accounts()
+        accounts, _unused = api.list_accounts()
 
         if not accounts:
             module.fail_json(msg="No accounts found")
@@ -393,7 +393,7 @@ def run_module():
                     update_data = {
                         'settings': {**current_settings, **desired_settings}
                     }
-                    updated_account, _ = api.update_account(account_id, update_data)
+                    updated_account, _unused = api.update_account(account_id, update_data)
                     result['account'] = updated_account
                 else:
                     result['account'] = account
