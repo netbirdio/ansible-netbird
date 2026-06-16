@@ -17,7 +17,7 @@ description:
   - Groups are used to organize peers and define access policies.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

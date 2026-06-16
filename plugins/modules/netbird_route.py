@@ -17,7 +17,7 @@ description:
   - "Note: This uses the deprecated routes API. Consider using networks for new implementations."
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

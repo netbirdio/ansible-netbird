@@ -17,7 +17,7 @@ description:
   - Supports both regular users and service users.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

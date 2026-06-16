@@ -17,7 +17,7 @@ description:
   - Posture checks define security requirements for peers.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

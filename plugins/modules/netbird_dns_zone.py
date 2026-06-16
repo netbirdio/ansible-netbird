@@ -18,7 +18,7 @@ description:
   - Zones are matched by name. Records within a zone are matched by name + type.
 version_added: "1.1.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

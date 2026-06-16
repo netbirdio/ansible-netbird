@@ -17,7 +17,7 @@ description:
   - Policies define network access rules between groups.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

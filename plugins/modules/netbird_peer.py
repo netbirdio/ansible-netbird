@@ -18,7 +18,7 @@ description:
   - "Note: Peers are registered using setup keys, not created via API."
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

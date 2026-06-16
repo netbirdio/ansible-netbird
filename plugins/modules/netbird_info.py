@@ -17,7 +17,7 @@ description:
   - Useful for dynamic inventory or gathering facts.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   resource:
     description:

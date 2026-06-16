@@ -18,7 +18,7 @@ description:
   - Invites cannot be updated, only created, deleted, or regenerated.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

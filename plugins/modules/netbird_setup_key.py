@@ -17,7 +17,7 @@ description:
   - Setup keys are used to register new peers to the network.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

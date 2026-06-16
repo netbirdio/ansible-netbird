@@ -18,7 +18,7 @@ description:
   - This module provides full routing capabilities, replacing the deprecated routes API.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:

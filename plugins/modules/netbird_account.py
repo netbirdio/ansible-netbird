@@ -17,7 +17,7 @@ description:
   - Configure peer login expiration, JWT settings, and other account-wide settings.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
