@@ -79,6 +79,16 @@ options:
     description:
       - Custom network range for the account in CIDR format.
     type: str
+  network_range_v6:
+    description:
+      - Custom IPv6 network range for the account in CIDR format.
+    type: str
+  ipv6_enabled_groups:
+    description:
+      - Peers in the selected groups will receive IPv6 overlay addresses (dual-stack). 
+      - Remove all groups to disable IPv6.
+    type: list
+    elements: str
   lazy_connection_enabled:
     description:
       - Enable or disable experimental lazy connection.
@@ -255,6 +265,8 @@ def build_settings_update(module):
         'routing_peer_dns_resolution_enabled': 'routing_peer_dns_resolution_enabled',
         'dns_domain': 'dns_domain',
         'network_range': 'network_range',
+        'network_range_v6': 'network_range_v6',
+        'ipv6_enabled_groups': 'ipv6_enabled_groups',
         'lazy_connection_enabled': 'lazy_connection_enabled'
     }
     
@@ -322,6 +334,8 @@ def run_module():
         routing_peer_dns_resolution_enabled=dict(type='bool'),
         dns_domain=dict(type='str'),
         network_range=dict(type='str'),
+        network_range_v6=dict(type='str'),
+        ipv6_enabled_groups=dict(type='list', elements='str'),
         lazy_connection_enabled=dict(type='bool'),
         extra_peer_approval_enabled=dict(type='bool'),
         extra_user_approval_required=dict(type='bool'),
