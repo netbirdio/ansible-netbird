@@ -126,6 +126,13 @@ options:
           - Whether to connect directly to the upstream host.
         type: bool
         default: true
+      skip_tls_verify:
+        description:
+          - Skip verification of the upstream TLS certificate. Use with
+            C(protocol=https) when the upstream serves a self-signed cert whose
+            SANs do not cover the dialed host.
+        type: bool
+        default: false
   auth:
     description:
       - Optional authentication in front of the service. Omit to leave the
@@ -240,7 +247,10 @@ def build_target(target):
         'port': target['port'],
         'protocol': target.get('protocol', 'http'),
         'enabled': target.get('enabled', True),
-        'options': {'direct_upstream': target.get('direct_upstream', True)},
+        'options': {
+            'direct_upstream': target.get('direct_upstream', True),
+            'skip_tls_verify': target.get('skip_tls_verify', False),
+        },
     }
 
 
@@ -321,6 +331,10 @@ def targets_differ(current, desired):
         des_direct = (desired_target.get('options') or {}).get('direct_upstream', True)
         if bool(cur_direct) != bool(des_direct):
             return True
+        cur_skip = (current_target.get('options') or {}).get('skip_tls_verify', False)
+        des_skip = (desired_target.get('options') or {}).get('skip_tls_verify', False)
+        if bool(cur_skip) != bool(des_skip):
+            return True
     return False
 
 
@@ -391,6 +405,7 @@ def run_module():
                 target_type=dict(type='str', choices=['subnet', 'host', 'domain'], default='subnet'),
                 enabled=dict(type='bool', default=True),
                 direct_upstream=dict(type='bool', default=True),
+                skip_tls_verify=dict(type='bool', default=False),
             ),
         ),
         auth=dict(
