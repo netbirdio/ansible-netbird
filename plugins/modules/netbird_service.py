@@ -133,6 +133,18 @@ options:
             SANs do not cover the dialed host.
         type: bool
         default: false
+      path:
+        description:
+          - Match prefix for path-based routing. Multiple targets in one service
+            with distinct paths route by longest-prefix match.
+        type: str
+        default: /
+      path_rewrite:
+        description:
+          - How the matched C(path) maps to the upstream. C(preserve) forwards
+            the full request path to the upstream unchanged.
+        type: str
+        default: preserve
   auth:
     description:
       - Optional authentication in front of the service. Omit to leave the
@@ -245,11 +257,13 @@ def build_target(target):
         'target_type': target.get('target_type', 'subnet'),
         'host': target['host'],
         'port': target['port'],
+        'path': target.get('path', '/'),
         'protocol': target.get('protocol', 'http'),
         'enabled': target.get('enabled', True),
         'options': {
             'direct_upstream': target.get('direct_upstream', True),
             'skip_tls_verify': target.get('skip_tls_verify', False),
+            'path_rewrite': target.get('path_rewrite', 'preserve'),
         },
     }
 
@@ -305,10 +319,10 @@ def build_body(params, domain):
 def target_key(target):
     """Identity key for matching a target across current/desired.
 
-    Keyed on target_id (the referenced resource) plus host+port, so a single
-    resource backing multiple host:port pairs stays unambiguous.
+    Keyed on target_id plus host+port+path, so one resource backing multiple
+    host:port pairs or path-routed targets stays unambiguous.
     """
-    return (target.get('target_id'), target.get('host'), target.get('port'))
+    return (target.get('target_id'), target.get('host'), target.get('port'), target.get('path') or '/')
 
 
 def targets_differ(current, desired):
@@ -334,6 +348,10 @@ def targets_differ(current, desired):
         cur_skip = (current_target.get('options') or {}).get('skip_tls_verify', False)
         des_skip = (desired_target.get('options') or {}).get('skip_tls_verify', False)
         if bool(cur_skip) != bool(des_skip):
+            return True
+        cur_rewrite = (current_target.get('options') or {}).get('path_rewrite', 'preserve')
+        des_rewrite = (desired_target.get('options') or {}).get('path_rewrite', 'preserve')
+        if cur_rewrite != des_rewrite:
             return True
     return False
 
@@ -406,6 +424,8 @@ def run_module():
                 enabled=dict(type='bool', default=True),
                 direct_upstream=dict(type='bool', default=True),
                 skip_tls_verify=dict(type='bool', default=False),
+                path=dict(type='str', default='/'),
+                path_rewrite=dict(type='str', default='preserve'),
             ),
         ),
         auth=dict(
