@@ -1,11 +1,11 @@
 # NetBird Self-Hosted Ansible Guide
 
-This document describes how to use `getting-started.yml`, what each supported deployment mode does, and which variables are intended for operators to change. It intentionally omits low-level internal constants such as container image
+This document describes how to use `getting_started.yml`, what each supported deployment mode does, and which variables are intended for operators to change. It intentionally omits low-level internal constants such as container image
 names, fixed internal Traefik IPs, and generated secret values unless changing them is a normal deployment concern.
 
 ## Scope
 
-`getting-started.yml` is an Ansible implementation of the NetBird self-hosted getting-started flow. It deploys the current combined NetBird server layout:
+`getting_started.yml` is an Ansible implementation of the NetBird self-hosted getting-started flow. It deploys the current combined NetBird server layout:
 - `netbird-dashboard`
 - `netbird-server`
 - optional built-in Traefik
@@ -47,7 +47,7 @@ Example inventory:
 
 Run with:
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=builtin_traefik \
   -e traefik_acme_email=admin@example.org
@@ -295,7 +295,7 @@ Validation rule:
 Default recommended path:
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=builtin_traefik \
   -e traefik_acme_email=admin@example.org
@@ -304,7 +304,7 @@ ansible-playbook -i inventory.ini getting-started.yml \
 Disable NetBird proxy and CrowdSec:
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=builtin_traefik \
   -e traefik_acme_email=admin@example.org \
@@ -399,7 +399,7 @@ trust for forwarded headers.
 ### External Traefik Example
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=external_traefik \
   -e traefik_external_network=traefik \
@@ -673,7 +673,7 @@ This requires become/root privileges and a Docker socket owned by the standard
 Example:
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=builtin_traefik \
   -e traefik_acme_email=admin@example.org \
@@ -840,7 +840,7 @@ Fix the server certificate rather than trying to bypass the warning.
 ### Built-in Traefik
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=builtin_traefik \
   -e traefik_acme_email=admin@example.org
@@ -849,7 +849,7 @@ ansible-playbook -i inventory.ini getting-started.yml \
 ### External Traefik with Playbook-Installed Runtime
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=external_traefik \
   -e traefik_external_network=traefik \
@@ -860,7 +860,7 @@ ansible-playbook -i inventory.ini getting-started.yml \
 ### Host Nginx
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=nginx \
   -e nginx_install_config=true \
@@ -872,7 +872,7 @@ ansible-playbook -i inventory.ini getting-started.yml \
 ### Nginx Proxy Manager Fully Automated
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=npm \
   -e npm_install_config=true \
@@ -884,7 +884,7 @@ ansible-playbook -i inventory.ini getting-started.yml \
 ### Caddy Host Install
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=caddy \
   -e caddy_install_config=true \
@@ -894,7 +894,7 @@ ansible-playbook -i inventory.ini getting-started.yml \
 ### Manual Mode
 
 ```bash
-ansible-playbook -i inventory.ini getting-started.yml \
+ansible-playbook -i inventory.ini getting_started.yml \
   -e netbird_domain=netbird.example.org \
   -e reverse_proxy_type=manual \
   -e bind_localhost_only=false
