@@ -9,11 +9,21 @@
     netbird_domain: ""
     reverse_proxy_type: builtin_traefik
     traefik_acme_email: ""
-    enable_proxy: false
-    enable_crowdsec: false
+    builtin_traefik_enable_proxy: true
+    builtin_traefik_enable_crowdsec: true
     traefik_external_network: ""
     traefik_entrypoint: websecure
     traefik_certresolver: ""
+
+    # Option for external Traefik proxies
+    external_traefik_install_config: false
+    external_traefik_project_dir: /opt/traefik
+    external_traefik_acme_email: ""
+    external_traefik_certresolver: letsencrypt
+    external_traefik_start: true
+    external_traefik_enable_dashboard: false
+    external_traefik_trusted_proxy_cidr: ""
+
     bind_localhost_only: true
     external_proxy_network: ""
     start_netbird_services: true
@@ -33,6 +43,44 @@
     traefik_ip: 172.30.0.10
     traefik_subnet: 172.30.0.0/24
     traefik_gateway: 172.30.0.1
+
+    # Option for NGINX proxies
+    nginx_install_config: false
+    nginx_ssl_certificate: ""
+    nginx_ssl_certificate_key: ""
+    nginx_config_path: /etc/nginx/sites-available/netbird
+    nginx_enabled_config_path: /etc/nginx/sites-enabled/netbird
+    nginx_disable_default_site: false
+    nginx_reload: true
+
+    # Option for Caddy proxies
+    caddy_install_config: false
+    caddy_config_path: /etc/caddy/Caddyfile
+    caddy_reload: true
+    caddy_acme_email: ""
+    caddy_acme_ca: ""
+
+    # Option for Nginx Proxy Manager runtime
+    npm_install_config: false
+    npm_project_dir: /opt/npm
+    npm_image: jc21/nginx-proxy-manager:latest
+    npm_network: npm
+    npm_http_port: 80
+    npm_https_port: 443
+    npm_admin_port: 81
+    npm_start: true
+    npm_configure_proxy_host: false
+    npm_admin_identity: ""
+    npm_admin_secret: ""
+    npm_api_url: ""
+    npm_proxy_host_ssl: true
+    npm_ssl_forced: true
+    npm_http2_support: true
+    npm_hsts_enabled: false
+    npm_hsts_subdomains: false
+    npm_block_exploits: true
+    npm_allow_websocket_upgrade: true
+    npm_existing_certificate_id: 0
 
     # Internal Variables
     docker_socket_path: /var/run/docker.sock
@@ -77,12 +125,30 @@
     - name: Validate boolean options
       ansible.builtin.assert:
         that:
-          - enable_proxy | string | lower in ['true', 'false']
-          - enable_crowdsec | string | lower in ['true', 'false']
+          - builtin_traefik_enable_proxy | string | lower in ['true', 'false']
+          - builtin_traefik_enable_crowdsec | string | lower in ['true', 'false']
           - bind_localhost_only | string | lower in ['true', 'false']
           - start_netbird_services | string | lower in ['true', 'false']
           - create_netbird_user | string | lower in ['true', 'false']
-        fail_msg: "enable_proxy, enable_crowdsec, bind_localhost_only, start_netbird_services, and create_netbird_user must be true or false."
+          - external_traefik_install_config | string | lower in ['true', 'false']
+          - external_traefik_start | string | lower in ['true', 'false']
+          - external_traefik_enable_dashboard | string | lower in ['true', 'false']
+          - nginx_install_config | string | lower in ['true', 'false']
+          - nginx_disable_default_site | string | lower in ['true', 'false']
+          - nginx_reload | string | lower in ['true', 'false']
+          - caddy_install_config | string | lower in ['true', 'false']
+          - caddy_reload | string | lower in ['true', 'false']
+          - npm_install_config | string | lower in ['true', 'false']
+          - npm_start | string | lower in ['true', 'false']
+          - npm_configure_proxy_host | string | lower in ['true', 'false']
+          - npm_proxy_host_ssl | string | lower in ['true', 'false']
+          - npm_ssl_forced | string | lower in ['true', 'false']
+          - npm_http2_support | string | lower in ['true', 'false']
+          - npm_hsts_enabled | string | lower in ['true', 'false']
+          - npm_hsts_subdomains | string | lower in ['true', 'false']
+          - npm_block_exploits | string | lower in ['true', 'false']
+          - npm_allow_websocket_upgrade | string | lower in ['true', 'false']
+        fail_msg: "Boolean options must be true or false."
 
     - name: Validate NetBird user name
       ansible.builtin.assert:
@@ -106,6 +172,22 @@
         fail_msg: "traefik_entrypoint cannot be empty when reverse_proxy_type is external_traefik."
       when: reverse_proxy_type == 'external_traefik'
 
+    - name: Validate external Traefik install settings
+      ansible.builtin.assert:
+        that:
+          - traefik_external_network | length > 0
+          - external_traefik_project_dir | length > 0
+          - external_traefik_acme_email | length > 0
+          - external_traefik_acme_email is match('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+          - external_traefik_certresolver | length > 0
+        fail_msg: >-
+          external_traefik_install_config=true requires traefik_external_network,
+          external_traefik_project_dir, external_traefik_acme_email, and
+          external_traefik_certresolver.
+      when:
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+
     - name: Validate external proxy port settings
       ansible.builtin.assert:
         that:
@@ -116,19 +198,71 @@
         fail_msg: "dashboard_host_port and management_host_port must be valid TCP ports."
       when: reverse_proxy_type in external_port_binding_proxy_types
 
-    - name: Reject CrowdSec without NetBird proxy
+    - name: Validate nginx install settings
       ansible.builtin.assert:
         that:
-          - not (enable_crowdsec | bool)
-        fail_msg: "enable_crowdsec requires enable_proxy=true."
-      when: not (enable_proxy | bool)
+          - nginx_ssl_certificate | length > 0
+          - nginx_ssl_certificate_key | length > 0
+          - nginx_config_path | length > 0
+          - nginx_enabled_config_path | length > 0
+        fail_msg: >-
+          nginx_install_config=true requires nginx_ssl_certificate, nginx_ssl_certificate_key,
+          nginx_config_path, and nginx_enabled_config_path.
+      when:
+        - reverse_proxy_type == 'nginx'
+        - nginx_install_config | bool
 
-    - name: Reject NetBird proxy without built-in Traefik
+    - name: Validate Nginx Proxy Manager install settings
       ansible.builtin.assert:
         that:
-          - reverse_proxy_type == 'builtin_traefik'
-        fail_msg: "enable_proxy is only supported when reverse_proxy_type is builtin_traefik."
-      when: enable_proxy | bool
+          - npm_project_dir | length > 0
+          - npm_image | length > 0
+          - npm_network | length > 0
+          - npm_http_port | int > 0
+          - npm_http_port | int <= 65535
+          - npm_https_port | int > 0
+          - npm_https_port | int <= 65535
+          - npm_admin_port | int > 0
+          - npm_admin_port | int <= 65535
+        fail_msg: >-
+          npm_install_config=true requires npm_project_dir, npm_image, npm_network,
+          npm_http_port, npm_https_port, and npm_admin_port to be valid.
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+
+    - name: Validate Caddy install settings
+      ansible.builtin.assert:
+        that:
+          - caddy_config_path | length > 0
+          - caddy_acme_email | length == 0 or caddy_acme_email is match('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        fail_msg: "caddy_install_config=true requires caddy_config_path."
+      when:
+        - reverse_proxy_type == 'caddy'
+        - caddy_install_config | bool
+
+    - name: Validate Nginx Proxy Manager API configuration settings
+      ansible.builtin.assert:
+        that:
+          - npm_admin_identity | length > 0
+          - npm_admin_secret | length > 0
+          - not (npm_hsts_subdomains | bool) or (npm_hsts_enabled | bool)
+          - npm_existing_certificate_id | int >= 0
+        fail_msg: >-
+          npm_configure_proxy_host=true requires npm_admin_identity and npm_admin_secret.
+          npm_hsts_subdomains requires npm_hsts_enabled=true.
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
+    - name: Reject built-in Traefik CrowdSec without NetBird proxy
+      ansible.builtin.assert:
+        that:
+          - not (builtin_traefik_enable_crowdsec | bool)
+        fail_msg: "builtin_traefik_enable_crowdsec requires builtin_traefik_enable_proxy=true."
+      when:
+        - reverse_proxy_type == 'builtin_traefik'
+        - not (builtin_traefik_enable_proxy | bool)
 
     - name: Set main host IPv4 address
       ansible.builtin.set_fact:
@@ -159,12 +293,20 @@
     - name: Set reverse proxy derived values
       ansible.builtin.set_fact:
         effective_traefik_network: "{{ traefik_external_network if traefik_external_network | length > 0 else 'netbird' }}"
-        effective_external_proxy_network: "{{ external_proxy_network if reverse_proxy_type in external_proxy_network_types else '' }}"
+        effective_external_proxy_network: "{{ external_proxy_network if reverse_proxy_type in external_proxy_network_types and external_proxy_network | length > 0 else npm_network if reverse_proxy_type == 'npm' and npm_install_config | bool else '' }}"
         use_exposed_container_ports: "{{ reverse_proxy_type in external_port_binding_proxy_types }}"
         use_builtin_traefik: "{{ reverse_proxy_type == 'builtin_traefik' }}"
         use_external_traefik: "{{ reverse_proxy_type == 'external_traefik' }}"
-        use_netbird_proxy: "{{ enable_proxy | bool and reverse_proxy_type == 'builtin_traefik' }}"
-        use_crowdsec: "{{ enable_proxy | bool and enable_crowdsec | bool and reverse_proxy_type == 'builtin_traefik' }}"
+        use_netbird_proxy: "{{ reverse_proxy_type == 'builtin_traefik' and builtin_traefik_enable_proxy | bool }}"
+        use_crowdsec: "{{ reverse_proxy_type == 'builtin_traefik' and builtin_traefik_enable_proxy | bool and builtin_traefik_enable_crowdsec | bool }}"
+        effective_traefik_certresolver: "{{ external_traefik_certresolver if reverse_proxy_type == 'external_traefik' and external_traefik_install_config | bool and traefik_certresolver | length == 0 else traefik_certresolver }}"
+        effective_trusted_proxy_cidr: "{{ traefik_ip ~ '/32' if reverse_proxy_type == 'builtin_traefik' else external_traefik_trusted_proxy_cidr }}"
+        effective_npm_api_url: "{{ npm_api_url if npm_api_url | length > 0 else 'http://127.0.0.1:' ~ npm_admin_port ~ '/api' }}"
+
+    - name: Set Nginx Proxy Manager derived values
+      ansible.builtin.set_fact:
+        effective_npm_forward_host: "{{ 'netbird-dashboard' if reverse_proxy_type == 'npm' and effective_external_proxy_network | length > 0 else upstream_host }}"
+        effective_npm_forward_port: "{{ 80 if reverse_proxy_type == 'npm' and effective_external_proxy_network | length > 0 else dashboard_host_port }}"
 
     - name: Check Docker socket
       ansible.builtin.stat:
@@ -307,6 +449,138 @@
       ansible.builtin.set_fact:
         compose_bin: "{{ 'docker compose' if compose_v2_check.rc == 0 else 'docker-compose' }}"
 
+    - name: Ensure Nginx Proxy Manager Docker network exists when install is requested
+      ansible.builtin.shell: >-
+        docker network inspect {{ npm_network | quote }} >/dev/null 2>&1
+        || docker network create {{ npm_network | quote }}
+      changed_when: false
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+
+    - name: Create Nginx Proxy Manager project directory when install is requested
+      ansible.builtin.file:
+        path: "{{ npm_project_dir }}"
+        state: directory
+        mode: "0755"
+      become: true
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+
+    - name: Render Nginx Proxy Manager docker-compose.yml when install is requested
+      ansible.builtin.copy:
+        dest: "{{ npm_project_dir }}/docker-compose.yml"
+        mode: "0644"
+        content: |
+          services:
+            npm:
+              image: {{ npm_image }}
+              container_name: npm
+              restart: unless-stopped
+              ports:
+                - "{{ npm_http_port }}:80"
+                - "{{ npm_admin_port }}:81"
+                - "{{ npm_https_port }}:443"
+          {% if npm_admin_identity | length > 0 and npm_admin_secret | length > 0 %}
+              environment:
+                INITIAL_ADMIN_EMAIL: "{{ npm_admin_identity }}"
+                INITIAL_ADMIN_PASSWORD: "{{ npm_admin_secret }}"
+          {% endif %}
+              networks:
+                - {{ npm_network }}
+              volumes:
+                - npm_data:/data
+                - npm_letsencrypt:/etc/letsencrypt
+              logging:
+                driver: json-file
+                options: {max-size: "500m", max-file: "2"}
+
+          networks:
+            {{ npm_network }}:
+              external: true
+
+          volumes:
+            npm_data:
+            npm_letsencrypt:
+      become: true
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+
+    - name: Ensure external Traefik Docker network exists when install is requested
+      ansible.builtin.shell: >-
+        docker network inspect {{ traefik_external_network | quote }} >/dev/null 2>&1
+        || docker network create {{ traefik_external_network | quote }}
+      changed_when: false
+      when:
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+
+    - name: Create external Traefik project directory when install is requested
+      ansible.builtin.file:
+        path: "{{ external_traefik_project_dir }}"
+        state: directory
+        mode: "0755"
+      become: true
+      when:
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+
+    - name: Render external Traefik docker-compose.yml when install is requested
+      ansible.builtin.copy:
+        dest: "{{ external_traefik_project_dir }}/docker-compose.yml"
+        mode: "0644"
+        content: |
+          services:
+            traefik:
+              image: {{ traefik_image }}
+              container_name: traefik
+              restart: unless-stopped
+              command:
+                - "--log.level=INFO"
+                - "--accesslog=true"
+                - "--providers.docker=true"
+                - "--providers.docker.exposedbydefault=false"
+                - "--providers.docker.network={{ traefik_external_network }}"
+                - "--entrypoints.web.address=:80"
+                - "--entrypoints.{{ traefik_entrypoint }}.address=:443"
+                - "--entrypoints.{{ traefik_entrypoint }}.transport.respondingTimeouts.readTimeout=0"
+                - "--entrypoints.{{ traefik_entrypoint }}.transport.respondingTimeouts.writeTimeout=0"
+                - "--entrypoints.{{ traefik_entrypoint }}.transport.respondingTimeouts.idleTimeout=0"
+                - "--entrypoints.web.http.redirections.entrypoint.to={{ traefik_entrypoint }}"
+                - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+                - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.email={{ external_traefik_acme_email }}"
+                - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.storage=/letsencrypt/acme.json"
+                - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.tlschallenge=true"
+                - "--serverstransport.forwardingtimeouts.responseheadertimeout=0s"
+                - "--serverstransport.forwardingtimeouts.idleconntimeout=0s"
+          {% if external_traefik_enable_dashboard | bool %}
+                - "--api.dashboard=true"
+          {% endif %}
+              ports:
+                - "80:80"
+                - "443:443"
+              networks:
+                - {{ traefik_external_network }}
+              volumes:
+                - /var/run/docker.sock:/var/run/docker.sock:ro
+                - traefik_letsencrypt:/letsencrypt
+              logging:
+                driver: json-file
+                options: {max-size: "500m", max-file: "2"}
+
+          networks:
+            {{ traefik_external_network }}:
+              external: true
+
+          volumes:
+            traefik_letsencrypt:
+      become: true
+      when:
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+
     - name: Check for jq
       ansible.builtin.command: jq --version
       register: jq_check
@@ -446,8 +720,12 @@
                 - "http://localhost:53000/"
 
             reverseProxy:
+          {% if effective_trusted_proxy_cidr | length > 0 %}
               trustedHTTPProxies:
-                - "{{ traefik_ip }}/32"
+                - "{{ effective_trusted_proxy_cidr }}"
+          {% else %}
+              trustedHTTPProxies: []
+          {% endif %}
 
             store:
               engine: "sqlite"
@@ -551,8 +829,8 @@
                 - traefik.http.routers.netbird-dashboard.tls=true
           {% if use_builtin_traefik | bool %}
                 - traefik.http.routers.netbird-dashboard.tls.certresolver=letsencrypt
-          {% elif traefik_certresolver | length > 0 %}
-                - traefik.http.routers.netbird-dashboard.tls.certresolver={{ traefik_certresolver }}
+          {% elif effective_traefik_certresolver | length > 0 %}
+                - traefik.http.routers.netbird-dashboard.tls.certresolver={{ effective_traefik_certresolver }}
           {% endif %}
                 - traefik.http.routers.netbird-dashboard.priority=1
                 - traefik.http.services.netbird-dashboard.loadbalancer.server.port=80
@@ -589,8 +867,8 @@
                 - traefik.http.routers.netbird-grpc.tls=true
           {% if use_builtin_traefik | bool %}
                 - traefik.http.routers.netbird-grpc.tls.certresolver=letsencrypt
-          {% elif traefik_certresolver | length > 0 %}
-                - traefik.http.routers.netbird-grpc.tls.certresolver={{ traefik_certresolver }}
+          {% elif effective_traefik_certresolver | length > 0 %}
+                - traefik.http.routers.netbird-grpc.tls.certresolver={{ effective_traefik_certresolver }}
           {% endif %}
                 - traefik.http.routers.netbird-grpc.service=netbird-server-h2c
                 - traefik.http.routers.netbird-grpc.priority=100
@@ -599,8 +877,8 @@
                 - traefik.http.routers.netbird-backend.tls=true
           {% if use_builtin_traefik | bool %}
                 - traefik.http.routers.netbird-backend.tls.certresolver=letsencrypt
-          {% elif traefik_certresolver | length > 0 %}
-                - traefik.http.routers.netbird-backend.tls.certresolver={{ traefik_certresolver }}
+          {% elif effective_traefik_certresolver | length > 0 %}
+                - traefik.http.routers.netbird-backend.tls.certresolver={{ effective_traefik_certresolver }}
           {% endif %}
                 - traefik.http.routers.netbird-backend.service=netbird-server
                 - traefik.http.routers.netbird-backend.priority=100
@@ -723,8 +1001,8 @@
               listen 443 ssl http2;
               server_name {{ effective_netbird_domain }};
 
-              ssl_certificate /path/to/your/fullchain.pem;
-              ssl_certificate_key /path/to/your/privkey.pem;
+              ssl_certificate {{ nginx_ssl_certificate if nginx_ssl_certificate | length > 0 else '/path/to/your/fullchain.pem' }};
+              ssl_certificate_key {{ nginx_ssl_certificate_key if nginx_ssl_certificate_key | length > 0 else '/path/to/your/privkey.pem' }};
               ssl_protocols TLSv1.2 TLSv1.3;
               ssl_prefer_server_ciphers off;
 
@@ -765,6 +1043,56 @@
           }
       when: reverse_proxy_type == 'nginx'
 
+    - name: Install generated Nginx config when requested
+      ansible.builtin.copy:
+        remote_src: true
+        src: "{{ netbird_project_dir }}/nginx-netbird.conf"
+        dest: "{{ nginx_config_path }}"
+        mode: "0644"
+      become: true
+      when:
+        - reverse_proxy_type == 'nginx'
+        - nginx_install_config | bool
+
+    - name: Enable generated Nginx config when requested
+      ansible.builtin.file:
+        src: "{{ nginx_config_path }}"
+        dest: "{{ nginx_enabled_config_path }}"
+        state: link
+        force: true
+      become: true
+      when:
+        - reverse_proxy_type == 'nginx'
+        - nginx_install_config | bool
+
+    - name: Disable default Nginx site when requested
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      become: true
+      when:
+        - reverse_proxy_type == 'nginx'
+        - nginx_install_config | bool
+        - nginx_disable_default_site | bool
+
+    - name: Test Nginx config when install is requested
+      ansible.builtin.command: nginx -t
+      become: true
+      changed_when: false
+      when:
+        - reverse_proxy_type == 'nginx'
+        - nginx_install_config | bool
+
+    - name: Reload Nginx when requested
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+      become: true
+      when:
+        - reverse_proxy_type == 'nginx'
+        - nginx_install_config | bool
+        - nginx_reload | bool
+
     - name: Render Nginx Proxy Manager advanced config
       ansible.builtin.copy:
         dest: "{{ netbird_project_dir }}/npm-advanced-config.txt"
@@ -772,6 +1100,9 @@
         content: |
           # Advanced Configuration for Nginx Proxy Manager
           # Paste this into the Advanced tab of your Proxy Host configuration.
+          # Proxy Host domain: {{ effective_netbird_domain }}
+          # Forward Hostname/IP: {{ 'netbird-dashboard' if effective_external_proxy_network | length > 0 else upstream_host }}
+          # Forward Port: {{ '80' if effective_external_proxy_network | length > 0 else dashboard_host_port }}
           # Enable HTTP/2 Support in the SSL tab for gRPC.
 
           client_header_timeout 1d;
@@ -811,6 +1142,17 @@
         mode: "0644"
         content: |
           # NetBird Caddyfile Snippet
+          {% if caddy_acme_email | length > 0 or caddy_acme_ca | length > 0 %}
+          {
+          {% if caddy_acme_email | length > 0 %}
+              email {{ caddy_acme_email }}
+          {% endif %}
+          {% if caddy_acme_ca | length > 0 %}
+              acme_ca {{ caddy_acme_ca }}
+          {% endif %}
+          }
+
+          {% endif %}
           {{ effective_netbird_domain }} {
               @grpc header Content-Type application/grpc*
               reverse_proxy @grpc h2c://{{ 'netbird-server:80' if effective_external_proxy_network | length > 0 else upstream_host ~ ':' ~ management_host_port }}
@@ -822,6 +1164,43 @@
           }
       when: reverse_proxy_type == 'caddy'
 
+    - name: Install generated Caddy config when requested
+      ansible.builtin.copy:
+        remote_src: true
+        src: "{{ netbird_project_dir }}/caddyfile-netbird.txt"
+        dest: "{{ caddy_config_path }}"
+        mode: "0644"
+      become: true
+      when:
+        - reverse_proxy_type == 'caddy'
+        - caddy_install_config | bool
+
+    - name: Format Caddy config when install is requested
+      ansible.builtin.command: "caddy fmt --overwrite {{ caddy_config_path }}"
+      become: true
+      changed_when: true
+      when:
+        - reverse_proxy_type == 'caddy'
+        - caddy_install_config | bool
+
+    - name: Validate Caddy config when install is requested
+      ansible.builtin.command: "caddy validate --config {{ caddy_config_path }}"
+      become: true
+      changed_when: false
+      when:
+        - reverse_proxy_type == 'caddy'
+        - caddy_install_config | bool
+
+    - name: Reload Caddy when requested
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
+      become: true
+      when:
+        - reverse_proxy_type == 'caddy'
+        - caddy_install_config | bool
+        - caddy_reload | bool
+
     - name: Show external reverse proxy preparation step
       ansible.builtin.debug:
         msg:
@@ -831,6 +1210,8 @@
       when:
         - start_netbird_services | bool
         - reverse_proxy_type in ['nginx', 'caddy', 'manual']
+        - not (reverse_proxy_type == 'nginx' and nginx_install_config | bool)
+        - not (reverse_proxy_type == 'caddy' and caddy_install_config | bool)
 
     - name: Wait for external reverse proxy confirmation
       ansible.builtin.pause:
@@ -838,6 +1219,19 @@
       when:
         - start_netbird_services | bool
         - reverse_proxy_type in ['nginx', 'caddy', 'manual']
+        - not (reverse_proxy_type == 'nginx' and nginx_install_config | bool)
+        - not (reverse_proxy_type == 'caddy' and caddy_install_config | bool)
+
+    - name: Start external Traefik when install is requested
+      ansible.builtin.command: "{{ compose_bin }} up -d"
+      args:
+        chdir: "{{ external_traefik_project_dir }}"
+      become: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+        - external_traefik_start | bool
 
     - name: Start built-in Traefik core services first when proxy is enabled
       ansible.builtin.command: "{{ compose_bin }} up -d traefik dashboard netbird-server{% if use_crowdsec | bool %} crowdsec{% endif %}"
@@ -855,6 +1249,207 @@
         - start_netbird_services | bool
         - not (use_netbird_proxy | bool)
 
+    - name: Reload Caddy after NetBird starts when requested
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
+      become: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'caddy'
+        - caddy_install_config | bool
+        - caddy_reload | bool
+
+    - name: Start Nginx Proxy Manager when install is requested
+      ansible.builtin.command: "{{ compose_bin }} up -d"
+      args:
+        chdir: "{{ npm_project_dir }}"
+      become: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+        - npm_start | bool
+
+    - name: Wait for Nginx Proxy Manager API when proxy host configuration is requested
+      ansible.builtin.uri:
+        url: "{{ effective_npm_api_url }}"
+        method: GET
+        status_code: [200, 404]
+      register: npm_api_wait
+      retries: 60
+      delay: 2
+      until: npm_api_wait.status in [200, 404]
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
+    - name: Get Nginx Proxy Manager API token
+      ansible.builtin.uri:
+        url: "{{ effective_npm_api_url }}/tokens"
+        method: POST
+        body_format: json
+        body:
+          identity: "{{ npm_admin_identity }}"
+          secret: "{{ npm_admin_secret }}"
+          scope: user
+        status_code: 200
+      register: npm_token_response
+      no_log: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
+    - name: Read generated Nginx Proxy Manager advanced config
+      ansible.builtin.slurp:
+        path: "{{ netbird_project_dir }}/npm-advanced-config.txt"
+      register: npm_advanced_config_raw
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
+    - name: List Nginx Proxy Manager certificates
+      ansible.builtin.uri:
+        url: "{{ effective_npm_api_url }}/nginx/certificates"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ npm_token_response.json.token }}"
+        status_code: 200
+      register: npm_certificates_response
+      no_log: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+        - npm_proxy_host_ssl | bool
+        - npm_existing_certificate_id | int == 0
+
+    - name: Select existing Nginx Proxy Manager certificate for domain
+      ansible.builtin.set_fact:
+        npm_selected_certificate_id: "{{ item.id }}"
+      loop: "{{ npm_certificates_response.json | default([]) }}"
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+        - npm_proxy_host_ssl | bool
+        - npm_existing_certificate_id | int == 0
+        - effective_netbird_domain in item.domain_names
+
+    - name: Request Nginx Proxy Manager Let's Encrypt certificate when needed
+      ansible.builtin.uri:
+        url: "{{ effective_npm_api_url }}/nginx/certificates"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ npm_token_response.json.token }}"
+        body_format: json
+        body:
+          provider: letsencrypt
+          domain_names:
+            - "{{ effective_netbird_domain }}"
+          meta:
+            dns_challenge: false
+            key_type: rsa
+        status_code: 201
+        timeout: 900
+      register: npm_created_certificate_response
+      no_log: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+        - npm_proxy_host_ssl | bool
+        - npm_existing_certificate_id | int == 0
+        - npm_selected_certificate_id | default(0) | int == 0
+
+    - name: Set effective Nginx Proxy Manager certificate ID
+      ansible.builtin.set_fact:
+        npm_effective_certificate_id: >-
+          {{ npm_existing_certificate_id | int
+          if npm_existing_certificate_id | int > 0
+          else npm_selected_certificate_id | default(npm_created_certificate_response.json.id | default(0)) | int
+          if npm_proxy_host_ssl | bool
+          else 0 }}
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
+    - name: Require Nginx Proxy Manager certificate when SSL is enabled
+      ansible.builtin.assert:
+        that:
+          - npm_effective_certificate_id | int > 0
+        fail_msg: >-
+          NPM SSL is enabled, but no certificate ID was selected or created.
+          Set npm_existing_certificate_id or check NPM Let's Encrypt issuance logs.
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+        - npm_proxy_host_ssl | bool
+
+    - name: List Nginx Proxy Manager proxy hosts
+      ansible.builtin.uri:
+        url: "{{ effective_npm_api_url }}/nginx/proxy-hosts"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ npm_token_response.json.token }}"
+        status_code: 200
+      register: npm_proxy_hosts_response
+      no_log: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
+    - name: Select existing Nginx Proxy Manager proxy host for domain
+      ansible.builtin.set_fact:
+        npm_existing_proxy_host_id: "{{ item.id }}"
+      loop: "{{ npm_proxy_hosts_response.json | default([]) }}"
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+        - effective_netbird_domain in item.domain_names
+
+    - name: Configure Nginx Proxy Manager proxy host
+      ansible.builtin.uri:
+        url: "{{ effective_npm_api_url }}/nginx/proxy-hosts{{ '/' ~ npm_existing_proxy_host_id if npm_existing_proxy_host_id | default(0) | int > 0 else '' }}"
+        method: "{{ 'PUT' if npm_existing_proxy_host_id | default(0) | int > 0 else 'POST' }}"
+        headers:
+          Authorization: "Bearer {{ npm_token_response.json.token }}"
+        body_format: json
+        body:
+          domain_names:
+            - "{{ effective_netbird_domain }}"
+          forward_scheme: http
+          forward_host: "{{ effective_npm_forward_host }}"
+          forward_port: "{{ effective_npm_forward_port | int }}"
+          certificate_id: "{{ npm_effective_certificate_id | int }}"
+          ssl_forced: "{{ npm_proxy_host_ssl | bool and npm_ssl_forced | bool }}"
+          hsts_enabled: "{{ npm_proxy_host_ssl | bool and npm_hsts_enabled | bool }}"
+          hsts_subdomains: "{{ npm_proxy_host_ssl | bool and npm_hsts_subdomains | bool }}"
+          http2_support: "{{ npm_proxy_host_ssl | bool and npm_http2_support | bool }}"
+          block_exploits: "{{ npm_block_exploits | bool }}"
+          caching_enabled: false
+          allow_websocket_upgrade: "{{ npm_allow_websocket_upgrade | bool }}"
+          access_list_id: 0
+          advanced_config: "{{ npm_advanced_config_raw.content | b64decode }}"
+          enabled: true
+          locations: []
+          meta: {}
+        status_code: "{{ 200 if npm_existing_proxy_host_id | default(0) | int > 0 else 201 }}"
+        timeout: 120
+      register: npm_proxy_host_response
+      no_log: true
+      when:
+        - start_netbird_services | bool
+        - reverse_proxy_type == 'npm'
+        - npm_configure_proxy_host | bool
+
     - name: Wait for NetBird server through public endpoint
       ansible.builtin.uri:
         url: "{{ netbird_http_protocol }}://{{ effective_netbird_domain }}/oauth2/.well-known/openid-configuration"
@@ -867,7 +1462,7 @@
       until: public_health.status == 200
       when:
         - start_netbird_services | bool
-        - use_builtin_traefik | bool or use_external_traefik | bool
+        - use_builtin_traefik | bool or use_external_traefik | bool or (reverse_proxy_type == 'npm' and npm_configure_proxy_host | bool) or (reverse_proxy_type == 'caddy' and caddy_install_config | bool)
 
     - name: Wait for NetBird server through direct endpoint
       ansible.builtin.uri:
@@ -963,6 +1558,9 @@
       ansible.builtin.debug:
         msg:
           - "NetBird files are in {{ netbird_project_dir }}."
-          - "Dashboard: {{ netbird_http_protocol }}://{{ effective_netbird_domain }}"
-          - "Open ports: 80/tcp and 443/tcp for built-in Traefik; {{ netbird_stun_port }}/udp for STUN."
-          - "For nginx/npm/caddy/manual, configure the generated reverse proxy file before relying on public access."
+          - "{{ 'Dashboard: ' ~ netbird_http_protocol ~ '://' ~ effective_netbird_domain if start_netbird_services | bool else 'Services were not started because start_netbird_services=false.' }}"
+          - "{{ 'Open ports: 80/tcp and 443/tcp for built-in Traefik; ' ~ netbird_stun_port ~ '/udp for STUN.' if use_builtin_traefik | bool else 'STUN uses ' ~ netbird_stun_port ~ '/udp directly on the host.' }}"
+          - "{{ 'External Traefik compose was installed at ' ~ external_traefik_project_dir ~ ' and joined to Docker network ' ~ traefik_external_network ~ '.' if reverse_proxy_type == 'external_traefik' and external_traefik_install_config | bool else 'For external_traefik, Traefik must already be running unless external_traefik_install_config=true.' }}"
+          - "{{ 'Nginx Proxy Manager compose was installed at ' ~ npm_project_dir ~ '. Configure the Proxy Host in NPM using ' ~ netbird_project_dir ~ '/npm-advanced-config.txt.' if reverse_proxy_type == 'npm' and npm_install_config | bool else 'For npm, configure the Proxy Host in NPM using npm-advanced-config.txt.' }}"
+          - "{{ 'Caddy config was installed to ' ~ caddy_config_path ~ ' and reloaded.' if reverse_proxy_type == 'caddy' and caddy_install_config | bool else 'For caddy, configure caddyfile-netbird.txt manually unless caddy_install_config=true.' }}"
+          - "{{ 'Nginx config was installed to ' ~ nginx_config_path ~ ' and enabled at ' ~ nginx_enabled_config_path ~ '.' if reverse_proxy_type == 'nginx' and nginx_install_config | bool else 'For nginx/npm/caddy/manual, configure the generated reverse proxy file before relying on public access.' }}"
