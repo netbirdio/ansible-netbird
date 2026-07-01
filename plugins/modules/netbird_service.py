@@ -46,36 +46,36 @@ options:
   mode:
     description:
       - Proxy mode. C(http) is L7; C(tcp)/C(udp)/C(tls) are L4 passthrough.
+      - Defaults to C(http) on create; left unchanged if omitted on update.
     type: str
     choices: ['http', 'tcp', 'udp', 'tls']
-    default: http
   private:
     description:
       - Whether the service is NetBird-only (reachable over the overlay only).
       - Private services are http-only and gated by C(access_groups); set false
         for L4 modes (tcp/udp/tls) or to use auth schemes.
+      - Defaults to C(true) on create; left unchanged if omitted on update.
     type: bool
-    default: true
   enabled:
     description:
       - Whether the service is enabled.
+      - Defaults to C(true) on create; left unchanged if omitted on update.
     type: bool
-    default: true
   listen_port:
     description:
       - Listen port for L4 modes. C(0) lets NetBird auto-assign.
+      - Defaults to C(0) on create; left unchanged if omitted on update.
     type: int
-    default: 0
   pass_host_header:
     description:
       - Whether to pass the original Host header to the target.
+      - Defaults to C(false) on create; left unchanged if omitted on update.
     type: bool
-    default: false
   rewrite_redirects:
     description:
       - Whether to rewrite upstream redirects to the public domain.
+      - Defaults to C(false) on create; left unchanged if omitted on update.
     type: bool
-    default: false
   access_groups:
     description:
       - List of group IDs allowed to reach the service.
@@ -311,27 +311,45 @@ def build_auth(auth, current_auth=None):
 def build_body(params, domain, current=None):
     """Build the full service payload from module params.
 
-    domain is passed explicitly so an update located by service_id can reuse the
-    existing service's domain. Omitted list options (access_groups, targets) stay
-    out of the body so they are left unmanaged; an explicit empty list clears.
-    current (existing service) preserves auth schemes the caller did not list.
+    The API does a full replace on PUT, so any field the caller omits carries
+    the current service's value forward instead of being cleared or reset to a
+    default. Scalars default only on create; the argspec defaults are dropped so
+    an omitted field reads as None here rather than as its default.
+
+    domain is passed in so an update found by service_id can reuse the existing
+    domain. current is the existing service, or None on create.
     """
+    current = current or {}
+
+    def scalar(field, default):
+        val = params.get(field)
+        if val is not None:
+            return val
+        return current.get(field, default)
+
     body = {
         'domain': domain,
-        'name': params.get('name') or domain,
-        'mode': params['mode'],
-        'private': params['private'],
-        'enabled': params['enabled'],
-        'listen_port': params['listen_port'],
-        'pass_host_header': params['pass_host_header'],
-        'rewrite_redirects': params['rewrite_redirects'],
+        'name': params.get('name') or current.get('name') or domain,
+        'mode': scalar('mode', 'http'),
+        'private': scalar('private', True),
+        'enabled': scalar('enabled', True),
+        'listen_port': scalar('listen_port', 0),
+        'pass_host_header': scalar('pass_host_header', False),
+        'rewrite_redirects': scalar('rewrite_redirects', False),
     }
+    # omitted -> carry current forward; an explicit value (incl. []) wins
     if params.get('access_groups') is not None:
         body['access_groups'] = params['access_groups']
+    elif current.get('access_groups') is not None:
+        body['access_groups'] = extract_ids(current['access_groups'])
     if params.get('targets') is not None:
         body['targets'] = [build_target(t) for t in params['targets']]
+    elif current.get('targets') is not None:
+        body['targets'] = current['targets']
     if params.get('auth') is not None:
-        body['auth'] = build_auth(params['auth'], (current or {}).get('auth'))
+        body['auth'] = build_auth(params['auth'], current.get('auth'))
+    elif current.get('auth') is not None:
+        body['auth'] = current['auth']
     return body
 
 
@@ -425,12 +443,12 @@ def run_module():
         service_id=dict(type='str'),
         domain=dict(type='str'),
         name=dict(type='str'),
-        mode=dict(type='str', choices=['http', 'tcp', 'udp', 'tls'], default='http'),
-        private=dict(type='bool', default=True),
-        enabled=dict(type='bool', default=True),
-        listen_port=dict(type='int', default=0),
-        pass_host_header=dict(type='bool', default=False, no_log=False),
-        rewrite_redirects=dict(type='bool', default=False),
+        mode=dict(type='str', choices=['http', 'tcp', 'udp', 'tls']),
+        private=dict(type='bool'),
+        enabled=dict(type='bool'),
+        listen_port=dict(type='int'),
+        pass_host_header=dict(type='bool', no_log=False),
+        rewrite_redirects=dict(type='bool'),
         access_groups=dict(type='list', elements='str'),
         targets=dict(
             type='list',
