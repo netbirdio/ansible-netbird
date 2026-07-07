@@ -61,10 +61,16 @@ EXAMPLES = r'''
     expires_in: 365
     state: present
   register: new_token
+  # The created token's secret (token.plain_token) is returned ONLY on
+  # creation. The registered result is sensitive — never print it.
 
-- name: Display the token value (only available on creation)
-  ansible.builtin.debug:
-    msg: "Token: {{ new_token.token.plain_token }}"
+- name: Persist the new token value securely (only available on creation)
+  ansible.builtin.copy:
+    content: "{{ new_token.token.plain_token }}"
+    dest: "/root/.netbird_token"
+    mode: "0600"
+  no_log: true  # never write a credential to the job log
+  when: new_token.token.plain_token is defined
 
 - name: Delete a token
   community.ansible_netbird.netbird_token:
@@ -100,7 +106,11 @@ token:
       description: Last used timestamp.
       type: str
     plain_token:
-      description: The actual token value (only returned on creation).
+      description:
+        - The actual token value (only returned on creation).
+        - This is a live credential. Ansible cannot mark an individual return
+          field as sensitive at runtime, so set C(no_log) to C(true) on any
+          task that registers or handles this result to keep it out of logs.
       type: str
 '''
 
@@ -127,7 +137,9 @@ def run_module():
     argument_spec.update(
         state=dict(type='str', choices=['present', 'absent'], default='present'),
         user_id=dict(type='str', required=True),
-        token_id=dict(type='str'),
+        # no_log: token_id is an opaque credential identifier; keep it out of
+        # invocation logs to avoid enumeration/correlation of tokens.
+        token_id=dict(type='str', no_log=True),
         name=dict(type='str'),
         expires_in=dict(type='int')
     )
@@ -194,6 +206,16 @@ def run_module():
                     expires_in=expires_in
                 )
                 result['token'] = token
+                # The creation response carries a one-time plaintext secret
+                # (plain_token). Ansible cannot flag a single return value as
+                # no_log, so warn the operator to protect it.
+                if isinstance(token, dict) and token.get('plain_token'):
+                    module.warn(
+                        "A new personal access token was created; its secret "
+                        "is in the 'plain_token' return field and is shown "
+                        "only once. Store it securely and set no_log: true on "
+                        "tasks that register or handle this result."
+                    )
             result['changed'] = True
 
         module.exit_json(**result)

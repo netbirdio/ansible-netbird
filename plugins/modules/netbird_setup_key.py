@@ -38,8 +38,8 @@ options:
   key_type:
     description:
       - Type of the setup key.
-      - 'one-off' keys can only be used once.
-      - 'reusable' keys can be used multiple times.
+      - "C(one-off) keys can only be used once."
+      - "C(reusable) keys can be used multiple times."
     type: str
     choices: ['one-off', 'reusable']
     default: one-off
@@ -93,6 +93,16 @@ EXAMPLES = r'''
     expires_in: 3600
     state: present
   register: setup_key
+  # The created key secret (setup_key.key) is returned ONLY on creation.
+  # The registered result is sensitive — never print it.
+
+- name: Persist the new setup key value securely (only available on creation)
+  ansible.builtin.copy:
+    content: "{{ setup_key.setup_key.key }}"
+    dest: "/root/.netbird_setup_key"
+    mode: "0600"
+  no_log: true  # never write a credential to the job log
+  when: setup_key.setup_key.key is defined
 
 - name: Create a reusable setup key with auto groups
   community.ansible_netbird.netbird_setup_key:
@@ -140,7 +150,11 @@ setup_key:
       description: Setup key ID.
       type: str
     key:
-      description: The actual setup key value (only returned on creation).
+      description:
+        - The actual setup key value (only returned on creation).
+        - This is a live credential. Ansible cannot mark an individual return
+          field as sensitive at runtime, so set C(no_log) to C(true) on any
+          task that registers or handles this result to keep it out of logs.
       type: str
     name:
       description: Setup key name.
@@ -311,6 +325,16 @@ def run_module():
                     allow_extra_dns_labels=module.params['allow_extra_dns_labels']
                 )
                 result['setup_key'] = key
+                # The creation response carries a one-time plaintext secret
+                # (key). Ansible cannot flag a single return value as no_log,
+                # so warn the operator to protect it.
+                if isinstance(key, dict) and key.get('key'):
+                    module.warn(
+                        "A new setup key was created; its secret is in the "
+                        "'key' return field and is shown only once. Store it "
+                        "securely and set no_log: true on tasks that register "
+                        "or handle this result."
+                    )
             result['changed'] = True
 
         module.exit_json(**result)

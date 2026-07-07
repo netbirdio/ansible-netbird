@@ -420,10 +420,10 @@ def run_module():
         module.exit_json(**result)
 
     except NetBirdAPIError as e:
-        module.fail_json(
-            msg=f"NetBird API error: {e}",
-            status_code=getattr(e, 'status_code', None)
-        )
+        # Match the error-reporting contract used by every other module so the
+        # status code and response body reach the caller (and the API layer's
+        # token sanitisation applies uniformly).
+        module.fail_json(msg=str(e), status_code=e.status_code, response=e.response)
 
 
 def main():
