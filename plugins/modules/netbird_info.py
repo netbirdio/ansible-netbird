@@ -26,7 +26,8 @@ options:
     choices: ['accounts', 'users', 'peers', 'groups', 'setup_keys', 'policies',
               'networks', 'routes', 'dns_nameservers', 'dns_zones',
               'dns_settings', 'posture_checks', 'events', 'countries',
-              'current_user', 'identity_providers', 'invites']
+              'current_user', 'identity_providers', 'invites',
+              'services']
     required: true
   service_user:
     description:
@@ -137,7 +138,8 @@ def run_module():
             choices=['accounts', 'users', 'peers', 'groups', 'setup_keys',
                      'policies', 'networks', 'routes', 'dns_nameservers',
                      'dns_zones', 'dns_settings', 'posture_checks', 'events',
-                     'countries', 'current_user', 'identity_providers', 'invites']
+                     'countries', 'current_user', 'identity_providers', 'invites',
+                     'services']
         ),
         service_user=dict(type='bool'),
         country_code=dict(type='str')
@@ -199,6 +201,8 @@ def run_module():
             data, _ = api.list_identity_providers()
         elif resource == 'invites':
             data, _ = api.list_user_invites()
+        elif resource == 'services':
+            data, _ = api.list_services()
         else:
             module.fail_json(msg=f"Unknown resource type: {resource}")
 

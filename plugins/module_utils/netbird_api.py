@@ -855,6 +855,27 @@ class NetBirdAPI:
         """List cities by country code."""
         return self.get(f'/api/locations/countries/{country_code}/cities')
 
+    # Service (reverse-proxy / Ingress) operations - /api/reverse-proxies/services.
+    def list_services(self):
+        """List all reverse-proxy services."""
+        return self.get('/api/reverse-proxies/services')
+
+    def get_service(self, service_id):
+        """Get a specific reverse-proxy service."""
+        return self.get(f'/api/reverse-proxies/services/{service_id}')
+
+    def create_service(self, data):
+        """Create a reverse-proxy service."""
+        return self.post('/api/reverse-proxies/services', data=data)
+
+    def update_service(self, service_id, data):
+        """Update a reverse-proxy service."""
+        return self.put(f'/api/reverse-proxies/services/{service_id}', data=data)
+
+    def delete_service(self, service_id):
+        """Delete a reverse-proxy service."""
+        return self.delete(f'/api/reverse-proxies/services/{service_id}')
+
 
 def netbird_argument_spec():
     """Return the argument spec common to all NetBird modules."""
