@@ -85,7 +85,7 @@ options:
     type: str
   ipv6_enabled_groups:
     description:
-      - Peers in the selected groups will receive IPv6 overlay addresses (dual-stack). 
+      - Peers in the selected groups will receive IPv6 overlay addresses (dual-stack).
       - Remove all groups to disable IPv6.
     type: list
     elements: str

@@ -243,7 +243,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_service_by_domain(api, domain):
     """Find a reverse-proxy service by domain."""
-    services, _ = api.list_services()
+    services, _unused = api.list_services()
     for service in (services or []):
         if service.get('domain') == domain:
             return service
@@ -518,7 +518,7 @@ def run_module():
         existing = None
         if service_id:
             try:
-                existing, _ = api.get_service(service_id)
+                existing, _unused = api.get_service(service_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -541,7 +541,7 @@ def run_module():
         if existing:
             if service_needs_update(existing, desired):
                 if not module.check_mode:
-                    updated, _ = api.update_service(existing['id'], desired)
+                    updated, _unused = api.update_service(existing['id'], desired)
                     result['service'] = updated
                 else:
                     result['service'] = existing
@@ -550,7 +550,7 @@ def run_module():
                 result['service'] = existing
         else:
             if not module.check_mode:
-                created, _ = api.create_service(desired)
+                created, _unused = api.create_service(desired)
                 result['service'] = created
             else:
                 result['service'] = desired
