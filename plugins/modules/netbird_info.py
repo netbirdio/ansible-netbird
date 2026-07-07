@@ -154,7 +154,8 @@ def run_module():
         module,
         module.params['api_url'],
         module.params['api_token'],
-        module.params['validate_certs']
+        module.params['validate_certs'],
+        timeout=module.params['timeout']
     )
 
     resource = module.params['resource']
