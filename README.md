@@ -39,7 +39,7 @@ This collection is not yet published to Ansible Galaxy. Install from source:
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/ansible-netbird.git
+git clone https://github.com/netbirdio/ansible-netbird.git
 
 # Build and install the collection
 cd ansible-netbird
@@ -171,15 +171,20 @@ Manage NetBird setup keys for peer enrollment. When updating an existing key, om
     key_type: "reusable"
     expires_in: 604800  # 7 days
     auto_groups:
-      - "servers"
+      - "servers-group-id"
     ephemeral: false
     state: present
   register: setup_key
 
-- name: Display the key
-  debug:
-    msg: "Setup key: {{ setup_key.setup_key.key }}"
-  when: setup_key.changed
+# The key secret is returned only on creation. Never print it with debug;
+# capture it once and store it in a secret manager.
+- name: Save the setup key (returned only on creation)
+  ansible.builtin.copy:
+    content: "{{ setup_key.setup_key.key }}"
+    dest: ./server-enrollment.key
+    mode: "0600"
+  no_log: true
+  when: setup_key.setup_key.key is defined
 
 # Revoke a key without wiping its auto_groups
 - name: Revoke setup key (auto_groups preserved)
@@ -432,10 +437,15 @@ Manage NetBird personal access tokens.
     state: present
   register: new_token
 
-- name: Display token
-  debug:
-    msg: "Token: {{ new_token.token.plain_token }}"
-  when: new_token.changed
+# The token secret is returned only on creation. Never print it with debug;
+# capture it once and store it in a secret manager.
+- name: Save the token (returned only on creation)
+  ansible.builtin.copy:
+    content: "{{ new_token.token.plain_token }}"
+    dest: ./automation-token.secret
+    mode: "0600"
+  no_log: true
+  when: new_token.token.plain_token is defined
 ```
 
 ### netbird_idp
@@ -718,7 +728,8 @@ This collection implements the [NetBird REST API](https://docs.netbird.io/api). 
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. This
+project follows the [Ansible Community Code of Conduct](CODE_OF_CONDUCT.md).
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
