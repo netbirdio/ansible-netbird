@@ -87,8 +87,15 @@ options:
     elements: str
 extends_documentation_fragment:
   - community.ansible_netbird.netbird
+attributes:
+  check_mode:
+    description: Can run in C(check_mode) and predict changes without modifying the target.
+    support: full
+  diff_mode:
+    description: This module does not report a diff of the changes it makes.
+    support: none
 requirements:
-  - python >= 3.6
+  - python >= 3.9
 '''
 
 EXAMPLES = r'''
