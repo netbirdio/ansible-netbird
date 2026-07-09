@@ -15,10 +15,10 @@ tags:
   - wireguard
   - zero-trust
 dependencies: {}
-repository: https://github.com/community/ansible-netbird
-documentation: https://github.com/community/ansible-netbird
+repository: https://github.com/netbirdio/ansible-netbird
+documentation: https://github.com/netbirdio/ansible-netbird
 homepage: https://netbird.io
-issues: https://github.com/community/ansible-netbird/issues
+issues: https://github.com/netbirdio/ansible-netbird/issues
 build_ignore:
   - '*.tar.gz'
   - '.git'

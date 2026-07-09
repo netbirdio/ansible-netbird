@@ -28,8 +28,8 @@ This collection provides comprehensive management of NetBird resources:
 
 ## Requirements
 
-- Ansible >= 2.12
-- Python >= 3.6
+- Ansible >= 2.15
+- Python >= 3.9
 - A NetBird self-hosted instance with API access
 - A NetBird Personal Access Token
 

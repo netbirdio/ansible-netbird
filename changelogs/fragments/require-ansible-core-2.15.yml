@@ -1,0 +1,8 @@
+---
+breaking_changes:
+  - >-
+    The collection now requires ansible-core 2.15 or newer and Python 3.9 or
+    newer (previously ansible-core 2.12 / Python 3.6). This aligns the declared
+    support floor with the modules' existing Python 3.6+ syntax and is set
+    consistently across ``galaxy.yml``, ``meta/runtime.yml``, ``meta/main.yml``,
+    ``README.md`` and ``tests/config.yml``.
