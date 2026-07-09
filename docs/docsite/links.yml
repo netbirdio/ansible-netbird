@@ -1,0 +1,14 @@
+---
+edit_on_github:
+  repository: netbirdio/ansible-netbird
+  branch: main
+
+extra_links:
+  - description: Configure NetBird with Ansible (docs.netbird.io)
+    url: https://docs.netbird.io/selfhosted/iac/ansible
+  - description: NetBird REST API reference
+    url: https://docs.netbird.io/api
+  - description: Submit a bug report
+    url: https://github.com/netbirdio/ansible-netbird/issues/new
+  - description: Request a feature
+    url: https://github.com/netbirdio/ansible-netbird/issues/new
