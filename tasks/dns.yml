@@ -30,4 +30,3 @@
     disabled_management_groups: "{{ netbird_dns_disabled_management_groups }}"
     state: present
   when: netbird_dns_disabled_management_groups | length > 0
-

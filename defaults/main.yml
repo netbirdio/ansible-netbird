@@ -189,4 +189,3 @@ netbird_account_settings: {}
 #   peer_inactivity_expiration_enabled: false
 #   jwt_groups_enabled: false
 #   dns_domain: "netbird.example.com"
-

@@ -17,7 +17,7 @@ description:
   - Can update global DNS settings or manage nameserver groups.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -220,7 +220,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_nsgroup_by_name(api, name):
     """Find a nameserver group by name."""
-    groups, _ = api.list_nameserver_groups()
+    groups, _unused = api.list_nameserver_groups()
     for group in (groups or []):
         if group.get('name') == name:
             return group
@@ -290,7 +290,7 @@ def nsgroup_needs_update(current, params):
         desired_domains = set(params['domains'])
         if current_domains != desired_domains:
             return True
-    
+
     return False
 
 
@@ -321,7 +321,8 @@ def run_module():
         module,
         module.params['api_url'],
         module.params['api_token'],
-        module.params['validate_certs']
+        module.params['validate_certs'],
+        timeout=module.params['timeout']
     )
 
     state = module.params['state']
@@ -334,17 +335,17 @@ def run_module():
     try:
         if resource_type == 'settings':
             # Handle DNS settings
-            current_settings, _ = api.get_dns_settings()
-            
+            current_settings, _unused = api.get_dns_settings()
+
             if state == 'present':
                 disabled_groups = module.params['disabled_management_groups']
                 if disabled_groups is not None:
                     current_disabled = set(extract_ids(current_settings.get('disabled_management_groups') or []))
                     desired_disabled = set(extract_ids(disabled_groups or []))
-                    
+
                     if current_disabled != desired_disabled:
                         if not module.check_mode:
-                            settings, _ = api.update_dns_settings(
+                            settings, _unused = api.update_dns_settings(
                                 disabled_management_groups=disabled_groups
                             )
                             result['dns_settings'] = settings
@@ -355,7 +356,7 @@ def run_module():
                         result['dns_settings'] = current_settings
                 else:
                     result['dns_settings'] = current_settings
-            
+
             module.exit_json(**result)
 
         # Handle nameserver groups
@@ -366,7 +367,7 @@ def run_module():
         existing_group = None
         if nsgroup_id:
             try:
-                existing_group, _ = api.get_nameserver_group(nsgroup_id)
+                existing_group, _unused = api.get_nameserver_group(nsgroup_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -406,7 +407,7 @@ def run_module():
 
             if nsgroup_needs_update(existing_group, update_params):
                 if not module.check_mode:
-                    group, _ = api.update_nameserver_group(
+                    group, _unused = api.update_nameserver_group(
                         existing_group['id'],
                         name=name,
                         nameservers=module.params['nameservers'],
@@ -429,9 +430,9 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new nameserver group")
             if not module.params['nameservers']:
                 module.fail_json(msg="nameservers is required when creating a new nameserver group")
-            
+
             if not module.check_mode:
-                group, _ = api.create_nameserver_group(
+                group, _unused = api.create_nameserver_group(
                     name=name,
                     nameservers=module.params['nameservers'],
                     description=module.params['description'],
@@ -456,5 +457,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

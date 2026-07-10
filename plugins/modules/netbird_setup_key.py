@@ -17,7 +17,7 @@ description:
   - Setup keys are used to register new peers to the network.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -38,8 +38,8 @@ options:
   key_type:
     description:
       - Type of the setup key.
-      - 'one-off' keys can only be used once.
-      - 'reusable' keys can be used multiple times.
+      - "C(one-off) keys can only be used once."
+      - "C(reusable) keys can be used multiple times."
     type: str
     choices: ['one-off', 'reusable']
     default: one-off
@@ -93,6 +93,16 @@ EXAMPLES = r'''
     expires_in: 3600
     state: present
   register: setup_key
+  # The created key secret (setup_key.key) is returned ONLY on creation.
+  # The registered result is sensitive — never print it.
+
+- name: Persist the new setup key value securely (only available on creation)
+  ansible.builtin.copy:
+    content: "{{ setup_key.setup_key.key }}"
+    dest: "/root/.netbird_setup_key"
+    mode: "0600"
+  no_log: true  # never write a credential to the job log
+  when: setup_key.setup_key.key is defined
 
 - name: Create a reusable setup key with auto groups
   community.ansible_netbird.netbird_setup_key:
@@ -140,7 +150,11 @@ setup_key:
       description: Setup key ID.
       type: str
     key:
-      description: The actual setup key value (only returned on creation).
+      description:
+        - The actual setup key value (only returned on creation).
+        - This is a live credential. Ansible cannot mark an individual return
+          field as sensitive at runtime, so set C(no_log) to C(true) on any
+          task that registers or handles this result to keep it out of logs.
       type: str
     name:
       description: Setup key name.
@@ -185,7 +199,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_setup_key_by_name(api, name):
     """Find a setup key by name."""
-    keys, _ = api.list_setup_keys()
+    keys, _unused = api.list_setup_keys()
     for key in (keys or []):
         if key.get('name') == name:
             return key
@@ -234,7 +248,8 @@ def run_module():
         module,
         module.params['api_url'],
         module.params['api_token'],
-        module.params['validate_certs']
+        module.params['validate_certs'],
+        timeout=module.params['timeout']
     )
 
     state = module.params['state']
@@ -251,7 +266,7 @@ def run_module():
         existing_key = None
         if key_id:
             try:
-                existing_key, _ = api.get_setup_key(key_id)
+                existing_key, _unused = api.get_setup_key(key_id)
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
@@ -282,7 +297,7 @@ def run_module():
 
             if setup_key_needs_update(existing_key, update_params):
                 if not module.check_mode:
-                    key, _ = api.update_setup_key(
+                    key, _unused = api.update_setup_key(
                         existing_key['id'],
                         revoked=module.params['revoked'],
                         auto_groups=effective_auto_groups
@@ -299,7 +314,7 @@ def run_module():
                 module.fail_json(msg="name is required when creating a new setup key")
 
             if not module.check_mode:
-                key, _ = api.create_setup_key(
+                key, _unused = api.create_setup_key(
                     name=name,
                     key_type=module.params['key_type'],
                     expires_in=module.params['expires_in'],
@@ -310,6 +325,16 @@ def run_module():
                     allow_extra_dns_labels=module.params['allow_extra_dns_labels']
                 )
                 result['setup_key'] = key
+                # The creation response carries a one-time plaintext secret
+                # (key). Ansible cannot flag a single return value as no_log,
+                # so warn the operator to protect it.
+                if isinstance(key, dict) and key.get('key'):
+                    module.warn(
+                        "A new setup key was created; its secret is in the "
+                        "'key' return field and is shown only once. Store it "
+                        "securely and set no_log: true on tasks that register "
+                        "or handle this result."
+                    )
             result['changed'] = True
 
         module.exit_json(**result)
@@ -324,5 +349,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

@@ -26,4 +26,3 @@ build_ignore:
   - 'tests'
   - 'venv'
   - '__pycache__'
-

@@ -231,6 +231,7 @@
              + (netbird_dns_disabled_management_groups | default([]) | community.ansible_netbird.netbird_missing_names(_pf_group_ids, 'group', 'DNS disabled_management_groups'))
              + ((netbird_settings | default({})).jwt_allow_groups | default([]) | community.ansible_netbird.netbird_missing_names(_pf_group_ids, 'group', 'settings jwt_allow_groups'))
              + ((netbird_settings | default({})).peer_expose_groups | default([]) | community.ansible_netbird.netbird_missing_names(_pf_group_ids, 'group', 'settings peer_expose_groups'))
+             + ((netbird_settings | default({})).ipv6_enabled_groups | default([]) | community.ansible_netbird.netbird_missing_names(_pf_group_ids, 'group', 'settings ipv6_enabled_groups'))
              + ((netbird_settings | default({})).extra_network_traffic_logs_groups | default([]) | community.ansible_netbird.netbird_missing_names(_pf_group_ids, 'group', 'settings extra_network_traffic_logs_groups')) }}
 
     - name: "Pre-flight: fail fast on unresolved references (no changes applied)"
@@ -310,7 +311,7 @@
 
     # --- 1. Settings ---
     # NOTE: account settings can reference groups (jwt_allow_groups,
-    # peer_expose_groups, extra_network_traffic_logs_groups). Those need the
+    # peer_expose_groups, ipv6_enabled_groups, extra_network_traffic_logs_groups). Those need the
     # group name→ID map, which is only built in PHASE 2 after groups are
     # created — so the "Apply settings" task is applied there, not here.
 
@@ -379,6 +380,8 @@
         routing_peer_dns_resolution_enabled: "{{ netbird_settings.routing_peer_dns_resolution_enabled | default(omit) }}"
         dns_domain: "{{ netbird_settings.dns_domain | default(omit) }}"
         network_range: "{{ netbird_settings.network_range | default(omit) }}"
+        network_range_v6: "{{ netbird_settings.network_range_v6 | default(omit) }}"
+        ipv6_enabled_groups: "{{ netbird_settings.ipv6_enabled_groups | community.ansible_netbird.netbird_resolve_names(group_ids, 'group', 'settings ipv6_enabled_groups') if netbird_settings.ipv6_enabled_groups is defined else omit }}"
         lazy_connection_enabled: "{{ netbird_settings.lazy_connection_enabled | default(omit) }}"
         auto_update_always: "{{ netbird_settings.auto_update_always | default(omit) }}"
         auto_update_version: "{{ netbird_settings.auto_update_version | default(omit) }}"
@@ -457,6 +460,11 @@
       loop_control:
         label: "{{ item.name }}"
       register: netbird_setup_key_results
+      # On creation the result carries the one-time plaintext key. Without
+      # no_log, running at -v or higher dumps every created key to the job
+      # log. The gated "Display created setup key values" task below is the
+      # sanctioned (opt-in) way to reveal them.
+      no_log: true
       when:
         - commit | bool
         - netbird_setup_keys | default([]) | length > 0

@@ -22,4 +22,3 @@
   loop_control:
     label: "{{ item.network_id }}"
   when: netbird_routes | length > 0
-
