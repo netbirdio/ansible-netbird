@@ -1,0 +1,488 @@
+---
+- name: Install NetBird from packages
+  hosts: netbird
+  gather_facts: true
+  become: false
+
+  vars:
+    # Prompted By Original Script / Common Controls
+    install_netbird_ui: false
+    start_netbird_service: true
+    enable_netbird_service: true
+    netbird_setup_key: ""
+    netbird_setup_management_url: ""
+    force_netbird_setup_key: false
+    allow_existing_netbird: false
+    allow_homebrew_reinstall: false
+    force_package_manager: ""
+
+    # Optional Variables
+    netbird_config_dir: /etc/netbird
+    netbird_install_config_file: /etc/netbird/install.conf
+    netbird_apt_repo: "deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main"
+    netbird_apt_key_url: https://pkgs.netbird.io/debian/public.key
+    netbird_apt_keyring: /usr/share/keyrings/netbird-archive-keyring.gpg
+    netbird_apt_source_file: /etc/apt/sources.list.d/netbird.list
+    netbird_yum_baseurl: https://pkgs.netbird.io/yum/
+    netbird_yum_gpgkey: https://pkgs.netbird.io/yum/repodata/repomd.xml.key
+    netbird_macos_pkg_url_amd64: https://pkgs.netbird.io/macos/amd64
+    netbird_macos_pkg_url_arm64: https://pkgs.netbird.io/macos/arm64
+    netbird_macos_pkg_dest: /tmp/netbird.pkg
+
+    # Internal Variables
+    netbird_cli_package: netbird
+    netbird_ui_package: netbird-ui
+    netbird_service_name: netbird
+    netbird_homebrew_tap_package: netbirdio/tap/netbird
+    netbird_homebrew_ui_cask: netbirdio/tap/netbird-ui
+    netbird_unsupported_package_managers:
+      - bin
+      - bootc
+      - unsupported
+
+  pre_tasks:
+    - name: Validate boolean options
+      ansible.builtin.assert:
+        that:
+          - install_netbird_ui | string | lower in ['true', 'false']
+          - start_netbird_service | string | lower in ['true', 'false']
+          - enable_netbird_service | string | lower in ['true', 'false']
+          - force_netbird_setup_key | string | lower in ['true', 'false']
+          - allow_existing_netbird | string | lower in ['true', 'false']
+          - allow_homebrew_reinstall | string | lower in ['true', 'false']
+        fail_msg: "install_netbird_ui, start_netbird_service, enable_netbird_service, force_netbird_setup_key, allow_existing_netbird, and allow_homebrew_reinstall must be true or false."
+
+    - name: Validate forced package manager
+      ansible.builtin.assert:
+        that:
+          - force_package_manager in ['', 'apt', 'dnf', 'yum', 'rpm-ostree', 'brew', 'pkg']
+        fail_msg: "force_package_manager must be empty or one of: apt, dnf, yum, rpm-ostree, brew, pkg."
+
+    - name: Validate setup key service requirements
+      ansible.builtin.assert:
+        that:
+          - start_netbird_service | bool
+        fail_msg: "netbird_setup_key requires start_netbird_service=true so the daemon is available for enrollment."
+      when: netbird_setup_key | length > 0
+
+    - name: Set host platform facts
+      ansible.builtin.set_fact:
+        is_linux: "{{ ansible_facts['system'] == 'Linux' }}"
+        is_macos: "{{ ansible_facts['system'] == 'Darwin' }}"
+        normalized_arch: >-
+          {{ 'amd64' if ansible_facts['architecture'] in ['x86_64', 'amd64'] else
+             'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else
+             ansible_facts['architecture'] }}
+
+    - name: Detect apt
+      ansible.builtin.shell: command -v apt-get
+      register: apt_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      when: is_linux | bool
+
+    - name: Detect dnf
+      ansible.builtin.shell: command -v dnf
+      register: dnf_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      when: is_linux | bool
+
+    - name: Detect yum
+      ansible.builtin.shell: command -v yum
+      register: yum_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      when: is_linux | bool
+
+    - name: Detect rpm-ostree
+      ansible.builtin.shell: command -v rpm-ostree
+      register: rpm_ostree_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      when: is_linux | bool
+
+    - name: Check ostree boot marker
+      ansible.builtin.stat:
+        path: /run/ostree-booted
+      register: ostree_booted
+      when: is_linux | bool
+
+    - name: Detect Homebrew
+      ansible.builtin.shell: command -v brew
+      register: brew_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      when: is_macos | bool
+
+    - name: Select package manager
+      ansible.builtin.set_fact:
+        selected_package_manager: >-
+          {% if force_package_manager | length > 0 -%}
+          {{ force_package_manager }}
+          {%- elif is_macos | bool and brew_check.rc | default(1) == 0 -%}
+          brew
+          {%- elif is_macos | bool -%}
+          pkg
+          {%- elif is_linux | bool and ostree_booted.stat.exists | default(false) and rpm_ostree_check.rc | default(1) == 0 -%}
+          rpm-ostree
+          {%- elif is_linux | bool and apt_check.rc | default(1) == 0 -%}
+          apt
+          {%- elif is_linux | bool and dnf_check.rc | default(1) == 0 -%}
+          dnf
+          {%- elif is_linux | bool and yum_check.rc | default(1) == 0 -%}
+          yum
+          {%- else -%}
+          unsupported
+          {%- endif %}
+
+    - name: Fail when binary-only or unsupported install would be required
+      ansible.builtin.fail:
+        msg: >-
+          This playbook installs NetBird from packages only. The target resolved to
+          '{{ selected_package_manager }}', which is not supported here. Use a host with apt,
+          dnf, yum, rpm-ostree, Homebrew, or macOS pkg support.
+      when: selected_package_manager in netbird_unsupported_package_managers
+
+    - name: Reject unsupported UI architecture
+      ansible.builtin.fail:
+        msg: "NetBird UI package installation is only supported on amd64 and arm64 hosts. Set install_netbird_ui=false."
+      when:
+        - install_netbird_ui | bool
+        - normalized_arch not in ['amd64', 'arm64']
+
+    - name: Detect existing NetBird command
+      ansible.builtin.shell: command -v netbird
+      register: netbird_command_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+
+    - name: Check existing NetBird status
+      ansible.builtin.command: netbird status
+      register: netbird_status_check
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      when: netbird_command_check.rc == 0
+
+    - name: Refuse existing NetBird install unless allowed
+      ansible.builtin.fail:
+        msg: >-
+          NetBird appears to be installed already. Set allow_existing_netbird=true if you
+          want this playbook to continue and let the package manager converge the install.
+      when:
+        - netbird_command_check.rc == 0
+        - netbird_status_check.rc | default(0) == 0 or netbird_status_check.stderr | default('') | length > 0 or netbird_status_check.stdout | default('') | length > 0
+        - not (allow_existing_netbird | bool)
+
+    - name: Warn when Linux desktop environment is not detected
+      ansible.builtin.debug:
+        msg: "XDG_CURRENT_DESKTOP is not set; install_netbird_ui=true may install a UI package on a headless host."
+      when:
+        - is_linux | bool
+        - install_netbird_ui | bool
+        - ansible_facts.get('env', {}).get('XDG_CURRENT_DESKTOP', '') | length == 0
+
+  tasks:
+    - name: Install NetBird with apt
+      when: selected_package_manager == 'apt'
+      block:
+        - name: Install apt prerequisites
+          ansible.builtin.apt:
+            name:
+              - ca-certificates
+              - curl
+              - gnupg
+            state: present
+            update_cache: true
+          become: true
+
+        - name: Remove legacy NetBird apt repository files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          become: true
+          loop:
+            - /etc/apt/sources.list.d/wiretrustee.list
+            - /etc/apt/trusted.gpg.d/wiretrustee.gpg
+            - /usr/share/keyrings/wiretrustee-archive-keyring.gpg
+
+        - name: Download NetBird apt public key
+          ansible.builtin.get_url:
+            url: "{{ netbird_apt_key_url }}"
+            dest: /tmp/netbird-archive-keyring.asc
+            mode: "0644"
+          become: true
+
+        - name: Install NetBird apt keyring
+          ansible.builtin.shell: |
+            set -eu
+            tmp_keyring=/tmp/netbird-archive-keyring.gpg
+            rm -f "$tmp_keyring"
+            gpg --dearmor --output "$tmp_keyring" /tmp/netbird-archive-keyring.asc
+            if ! test -f "{{ netbird_apt_keyring }}" || ! cmp -s "$tmp_keyring" "{{ netbird_apt_keyring }}"; then
+              install -m 0644 "$tmp_keyring" "{{ netbird_apt_keyring }}"
+              echo changed
+            else
+              echo unchanged
+            fi
+          register: netbird_apt_keyring_install
+          changed_when: "'changed' in netbird_apt_keyring_install.stdout"
+          become: true
+
+        - name: Set NetBird apt keyring permissions
+          ansible.builtin.file:
+            path: "{{ netbird_apt_keyring }}"
+            mode: "0644"
+          become: true
+
+        - name: Configure NetBird apt repository
+          ansible.builtin.copy:
+            dest: "{{ netbird_apt_source_file }}"
+            content: "{{ netbird_apt_repo }}\n"
+            mode: "0644"
+          become: true
+
+        - name: Install NetBird apt packages
+          ansible.builtin.apt:
+            name: "{{ [netbird_cli_package] + ([netbird_ui_package] if install_netbird_ui | bool else []) }}"
+            state: present
+            update_cache: true
+          become: true
+
+    - name: Install NetBird with yum or dnf
+      when: selected_package_manager in ['yum', 'dnf']
+      block:
+        - name: Configure NetBird yum repository
+          ansible.builtin.yum_repository:
+            name: NetBird
+            description: NetBird
+            baseurl: "{{ netbird_yum_baseurl }}"
+            enabled: true
+            gpgcheck: true
+            repo_gpgcheck: true
+            gpgkey: "{{ netbird_yum_gpgkey }}"
+          become: true
+
+        - name: Install NetBird rpm packages
+          ansible.builtin.package:
+            name: "{{ [netbird_cli_package] + ([netbird_ui_package] if install_netbird_ui | bool else []) }}"
+            state: present
+          become: true
+
+    - name: Install NetBird with rpm-ostree
+      when: selected_package_manager == 'rpm-ostree'
+      block:
+        - name: Configure NetBird yum repository for rpm-ostree
+          ansible.builtin.yum_repository:
+            name: NetBird
+            description: NetBird
+            baseurl: "{{ netbird_yum_baseurl }}"
+            enabled: true
+            gpgcheck: true
+            repo_gpgcheck: true
+            gpgkey: "{{ netbird_yum_gpgkey }}"
+          become: true
+
+        - name: Install NetBird rpm-ostree packages
+          ansible.builtin.command: "rpm-ostree install -y {{ ([netbird_cli_package] + ([netbird_ui_package] if install_netbird_ui | bool else [])) | join(' ') }}"
+          register: rpm_ostree_install
+          changed_when: "'No change' not in rpm_ostree_install.stdout"
+          become: true
+
+    - name: Install NetBird with Homebrew
+      when: selected_package_manager == 'brew'
+      block:
+        - name: Check existing Homebrew NetBird package
+          ansible.builtin.command: brew ls --versions netbird
+          register: brew_netbird_check
+          changed_when: false
+          failed_when: false
+
+        - name: Stop existing Homebrew NetBird service before reinstall
+          ansible.builtin.command: netbird service stop
+          changed_when: true
+          failed_when: false
+          when:
+            - brew_netbird_check.rc == 0
+            - allow_homebrew_reinstall | bool
+
+        - name: Uninstall existing Homebrew NetBird service before reinstall
+          ansible.builtin.command: netbird service uninstall
+          changed_when: true
+          failed_when: false
+          when:
+            - brew_netbird_check.rc == 0
+            - allow_homebrew_reinstall | bool
+
+        - name: Unlink existing Homebrew NetBird package before reinstall
+          ansible.builtin.command: brew unlink netbird
+          changed_when: true
+          failed_when: false
+          when:
+            - brew_netbird_check.rc == 0
+            - allow_homebrew_reinstall | bool
+
+        - name: Install NetBird Homebrew package
+          ansible.builtin.command: "brew install {{ netbird_homebrew_tap_package }}"
+          register: brew_install_netbird
+          changed_when: "'already installed' not in brew_install_netbird.stderr"
+          failed_when:
+            - brew_install_netbird.rc != 0
+            - "'already installed' not in brew_install_netbird.stderr"
+
+        - name: Install NetBird UI Homebrew cask
+          ansible.builtin.command: "brew install --cask {{ netbird_homebrew_ui_cask }}"
+          register: brew_install_netbird_ui
+          changed_when: "'already installed' not in brew_install_netbird_ui.stderr"
+          failed_when:
+            - brew_install_netbird_ui.rc != 0
+            - "'already installed' not in brew_install_netbird_ui.stderr"
+          when: install_netbird_ui | bool
+
+    - name: Install NetBird with macOS pkg
+      when: selected_package_manager == 'pkg'
+      block:
+        - name: Reject unsupported macOS pkg architecture
+          ansible.builtin.fail:
+            msg: "NetBird macOS pkg installation supports amd64 and arm64 only."
+          when: normalized_arch not in ['amd64', 'arm64']
+
+        - name: Check existing macOS NetBird receipt
+          ansible.builtin.stat:
+            path: /Library/Receipts/netbird.pkg
+          register: macos_netbird_receipt
+
+        - name: Refuse existing macOS pkg install unless allowed
+          ansible.builtin.fail:
+            msg: "NetBird macOS pkg receipt already exists. Set allow_existing_netbird=true to continue."
+          when:
+            - macos_netbird_receipt.stat.exists
+            - not (allow_existing_netbird | bool)
+
+        - name: Download NetBird macOS pkg
+          ansible.builtin.get_url:
+            url: "{{ netbird_macos_pkg_url_arm64 if normalized_arch == 'arm64' else netbird_macos_pkg_url_amd64 }}"
+            dest: "{{ netbird_macos_pkg_dest }}"
+            mode: "0644"
+
+        - name: Install NetBird macOS pkg
+          ansible.builtin.command: "installer -pkg {{ netbird_macos_pkg_dest }} -target /"
+          become: true
+
+    - name: Create NetBird install config directory
+      ansible.builtin.file:
+        path: "{{ netbird_config_dir }}"
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Write NetBird package manager config
+      ansible.builtin.copy:
+        dest: "{{ netbird_install_config_file }}"
+        content: "package_manager={{ selected_package_manager }}\n"
+        mode: "0644"
+      become: true
+
+    - name: Install NetBird service
+      ansible.builtin.command: netbird service install
+      register: netbird_service_install
+      changed_when: netbird_service_install.rc == 0
+      failed_when: false
+      become: true
+      when:
+        - start_netbird_service | bool or enable_netbird_service | bool
+        - selected_package_manager != 'pkg'
+
+    - name: Enable NetBird service on Linux
+      ansible.builtin.service:
+        name: "{{ netbird_service_name }}"
+        enabled: "{{ enable_netbird_service | bool }}"
+      become: true
+      when:
+        - is_linux | bool
+        - selected_package_manager != 'pkg'
+
+    - name: Start NetBird service on Linux
+      ansible.builtin.service:
+        name: "{{ netbird_service_name }}"
+        state: started
+      become: true
+      when:
+        - is_linux | bool
+        - start_netbird_service | bool
+        - selected_package_manager != 'pkg'
+
+    - name: Start NetBird service with NetBird CLI on non-Linux hosts
+      ansible.builtin.command: netbird service start
+      register: netbird_service_start
+      changed_when: netbird_service_start.rc == 0
+      failed_when: false
+      become: true
+      when:
+        - start_netbird_service | bool
+        - not (is_linux | bool)
+        - selected_package_manager != 'pkg'
+
+    - name: Check NetBird connection status before setup key enrollment
+      ansible.builtin.command: netbird status
+      register: netbird_post_install_status
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      no_log: true
+      when: netbird_setup_key | length > 0
+
+    - name: Enroll NetBird with setup key
+      ansible.builtin.command:
+        argv:
+          - netbird
+          - up
+          - --setup-key
+          - "{{ netbird_setup_key }}"
+      register: netbird_setup_key_enrollment
+      changed_when: netbird_setup_key_enrollment.rc == 0
+      become: true
+      no_log: true
+      when:
+        - netbird_setup_key | length > 0
+        - netbird_setup_management_url | length == 0
+        - >-
+          force_netbird_setup_key | bool or not (
+            'Management: Connected' in netbird_post_install_status.stdout | default('') and
+            'Signal: Connected' in netbird_post_install_status.stdout | default('')
+          )
+
+    - name: Enroll NetBird with setup key and management URL
+      ansible.builtin.command:
+        argv:
+          - netbird
+          - up
+          - --setup-key
+          - "{{ netbird_setup_key }}"
+          - --management-url
+          - "{{ netbird_setup_management_url }}"
+      register: netbird_setup_key_management_enrollment
+      changed_when: netbird_setup_key_management_enrollment.rc == 0
+      become: true
+      no_log: true
+      when:
+        - netbird_setup_key | length > 0
+        - netbird_setup_management_url | length > 0
+        - >-
+          force_netbird_setup_key | bool or not (
+            'Management: Connected' in netbird_post_install_status.stdout | default('') and
+            'Signal: Connected' in netbird_post_install_status.stdout | default('')
+          )
+
+    - name: Show next step
+      ansible.builtin.debug:
+        msg: >-
+          NetBird package installation is complete.
+          {{ "Setup key enrollment was requested." if netbird_setup_key | length > 0 else "Run 'netbird up' on the target host to connect." }}
