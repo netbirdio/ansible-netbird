@@ -67,12 +67,12 @@
 
     - name: Set host platform facts
       ansible.builtin.set_fact:
-        is_linux: "{{ ansible_system == 'Linux' }}"
-        is_macos: "{{ ansible_system == 'Darwin' }}"
+        is_linux: "{{ ansible_facts['system'] == 'Linux' }}"
+        is_macos: "{{ ansible_facts['system'] == 'Darwin' }}"
         normalized_arch: >-
-          {{ 'amd64' if ansible_architecture in ['x86_64', 'amd64'] else
-             'arm64' if ansible_architecture in ['aarch64', 'arm64'] else
-             ansible_architecture }}
+          {{ 'amd64' if ansible_facts['architecture'] in ['x86_64', 'amd64'] else
+             'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else
+             ansible_facts['architecture'] }}
 
     - name: Detect apt
       ansible.builtin.shell: command -v apt-get
@@ -187,7 +187,7 @@
       when:
         - is_linux | bool
         - install_netbird_ui | bool
-        - ansible_env.XDG_CURRENT_DESKTOP | default('') | length == 0
+        - ansible_facts.get('env', {}).get('XDG_CURRENT_DESKTOP', '') | length == 0
 
   tasks:
     - name: Install NetBird with apt
