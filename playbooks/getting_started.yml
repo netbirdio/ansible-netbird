@@ -17,6 +17,7 @@
 
     # Option for external Traefik proxies
     external_traefik_install_config: false
+    external_traefik_overwrite_existing_config: false
     external_traefik_project_dir: /opt/traefik
     external_traefik_acme_email: ""
     external_traefik_certresolver: letsencrypt
@@ -62,6 +63,7 @@
 
     # Option for Nginx Proxy Manager runtime
     npm_install_config: false
+    npm_overwrite_existing_config: false
     npm_project_dir: /opt/npm
     npm_image: jc21/nginx-proxy-manager:latest
     npm_network: npm
@@ -111,9 +113,11 @@
           - netbird_domain | length > 0
           - netbird_domain != 'netbird.example.com'
           - netbird_domain == 'use-ip' or netbird_domain is match('^(?=.{1,253}$)(?!-)([A-Za-z0-9-]{1,63}\\.)+[A-Za-z]{2,63}$')
+          - netbird_domain != 'use-ip' or reverse_proxy_type == 'manual'
         fail_msg: >-
           Set netbird_domain to a real FQDN before running this playbook, or set it to use-ip
-          for a non-TLS IP-based test deployment. Do not include http:// or https://.
+          with reverse_proxy_type=manual for a non-TLS IP-based test deployment. Do not include
+          http:// or https://.
 
     - name: Validate reverse proxy type
       ansible.builtin.assert:
@@ -131,6 +135,7 @@
           - start_netbird_services | string | lower in ['true', 'false']
           - create_netbird_user | string | lower in ['true', 'false']
           - external_traefik_install_config | string | lower in ['true', 'false']
+          - external_traefik_overwrite_existing_config | string | lower in ['true', 'false']
           - external_traefik_start | string | lower in ['true', 'false']
           - external_traefik_enable_dashboard | string | lower in ['true', 'false']
           - nginx_install_config | string | lower in ['true', 'false']
@@ -139,6 +144,7 @@
           - caddy_install_config | string | lower in ['true', 'false']
           - caddy_reload | string | lower in ['true', 'false']
           - npm_install_config | string | lower in ['true', 'false']
+          - npm_overwrite_existing_config | string | lower in ['true', 'false']
           - npm_start | string | lower in ['true', 'false']
           - npm_configure_proxy_host | string | lower in ['true', 'false']
           - npm_proxy_host_ssl | string | lower in ['true', 'false']
@@ -170,6 +176,13 @@
         that:
           - traefik_entrypoint | length > 0
         fail_msg: "traefik_entrypoint cannot be empty when reverse_proxy_type is external_traefik."
+      when: reverse_proxy_type == 'external_traefik'
+
+    - name: Require external Traefik Docker network
+      ansible.builtin.assert:
+        that:
+          - traefik_external_network | length > 0
+        fail_msg: "traefik_external_network cannot be empty when reverse_proxy_type is external_traefik."
       when: reverse_proxy_type == 'external_traefik'
 
     - name: Validate external Traefik install settings
@@ -462,16 +475,36 @@
       ansible.builtin.file:
         path: "{{ npm_project_dir }}"
         state: directory
-        mode: "0755"
+        mode: "0700"
       become: true
       when:
         - reverse_proxy_type == 'npm'
         - npm_install_config | bool
 
+    - name: Check for existing Nginx Proxy Manager Compose config
+      ansible.builtin.stat:
+        path: "{{ npm_project_dir }}/docker-compose.yml"
+      register: npm_compose_config
+      become: true
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+
+    - name: Refuse to overwrite existing Nginx Proxy Manager Compose config
+      ansible.builtin.fail:
+        msg: >-
+          {{ npm_project_dir }}/docker-compose.yml already exists. Set
+          npm_overwrite_existing_config=true to replace it explicitly.
+      when:
+        - reverse_proxy_type == 'npm'
+        - npm_install_config | bool
+        - npm_compose_config.stat.exists
+        - not (npm_overwrite_existing_config | bool)
+
     - name: Render Nginx Proxy Manager docker-compose.yml when install is requested
       ansible.builtin.copy:
         dest: "{{ npm_project_dir }}/docker-compose.yml"
-        mode: "0644"
+        mode: "0600"
         content: |
           services:
             npm:
@@ -504,6 +537,7 @@
             npm_data:
             npm_letsencrypt:
       become: true
+      no_log: true
       when:
         - reverse_proxy_type == 'npm'
         - npm_install_config | bool
@@ -526,6 +560,26 @@
       when:
         - reverse_proxy_type == 'external_traefik'
         - external_traefik_install_config | bool
+
+    - name: Check for existing external Traefik Compose config
+      ansible.builtin.stat:
+        path: "{{ external_traefik_project_dir }}/docker-compose.yml"
+      register: external_traefik_compose_config
+      become: true
+      when:
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+
+    - name: Refuse to overwrite existing external Traefik Compose config
+      ansible.builtin.fail:
+        msg: >-
+          {{ external_traefik_project_dir }}/docker-compose.yml already exists. Set
+          external_traefik_overwrite_existing_config=true to replace it explicitly.
+      when:
+        - reverse_proxy_type == 'external_traefik'
+        - external_traefik_install_config | bool
+        - external_traefik_compose_config.stat.exists
+        - not (external_traefik_overwrite_existing_config | bool)
 
     - name: Render external Traefik docker-compose.yml when install is requested
       ansible.builtin.copy:
@@ -625,12 +679,14 @@
         - not (allow_existing_config | default(false) | bool)
 
     - name: Generate relay auth secret when missing
-      ansible.builtin.shell: "openssl rand -base64 32 | tr -d '=' > {{ netbird_project_dir }}/relay_auth_secret"
+      ansible.builtin.shell: >-
+        openssl rand -base64 32 | tr -d '=' > {{ (netbird_project_dir ~ '/relay_auth_secret') | quote }}
       args:
         creates: "{{ netbird_project_dir }}/relay_auth_secret"
 
     - name: Generate datastore encryption key when missing
-      ansible.builtin.shell: "openssl rand -base64 32 > {{ netbird_project_dir }}/datastore_encryption_key"
+      ansible.builtin.shell: >-
+        openssl rand -base64 32 > {{ (netbird_project_dir ~ '/datastore_encryption_key') | quote }}
       args:
         creates: "{{ netbird_project_dir }}/datastore_encryption_key"
 
@@ -692,7 +748,7 @@
     - name: Render combined NetBird server config
       ansible.builtin.copy:
         dest: "{{ netbird_project_dir }}/config.yaml"
-        mode: "0640"
+        mode: "0600"
         content: |
           # Combined NetBird Server Configuration
           # Generated by Ansible from getting-started.sh logic
@@ -912,7 +968,7 @@
               labels:
                 - traefik.enable=true
                 - traefik.tcp.routers.proxy-passthrough.entrypoints=websecure
-                - traefik.tcp.routers.proxy-passthrough.rule=HostSNI(`*`)
+                - traefik.tcp.routers.proxy-passthrough.rule=HostSNIRegexp(`^.+\.{{ effective_netbird_domain | regex_escape }}$`)
                 - traefik.tcp.routers.proxy-passthrough.tls.passthrough=true
                 - traefik.tcp.routers.proxy-passthrough.service=proxy-tls
                 - traefik.tcp.routers.proxy-passthrough.priority=1
@@ -1025,7 +1081,7 @@
                   proxy_read_timeout 1d;
               }
 
-              location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService)/ {
+              location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService|management\.ProxyService)/ {
                   grpc_pass grpc://netbird_server;
                   grpc_read_timeout 1d;
                   grpc_send_timeout 1d;
@@ -1120,7 +1176,7 @@
               proxy_read_timeout 1d;
           }
 
-          location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService)/ {
+          location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService|management\.ProxyService)/ {
               grpc_pass grpc://{{ 'netbird-server:80' if effective_external_proxy_network | length > 0 else upstream_host ~ ':' ~ management_host_port }};
               grpc_read_timeout 1d;
               grpc_send_timeout 1d;
@@ -1454,7 +1510,6 @@
       ansible.builtin.uri:
         url: "{{ netbird_http_protocol }}://{{ effective_netbird_domain }}/oauth2/.well-known/openid-configuration"
         method: GET
-        validate_certs: false
         status_code: 200
       register: public_health
       retries: 60
@@ -1533,6 +1588,7 @@
           NB_PROXY_CERTIFICATE_DIRECTORY=/certs
           NB_PROXY_ACME_CERTIFICATES=true
           NB_PROXY_ACME_CHALLENGE_TYPE=tls-alpn-01
+          NB_PROXY_REQUIRE_SUBDOMAIN=true
           NB_PROXY_FORWARDED_PROTO=https
           NB_PROXY_PROXY_PROTOCOL=true
           NB_PROXY_TRUSTED_PROXIES={{ traefik_ip }}
