@@ -19,6 +19,8 @@ netbird_settings: {}
   # routing_peer_dns_resolution_enabled: true
   # dns_domain: "netbird.example.com"
   # network_range: "100.64.0.0/10"
+  # network_range_v6: "fd00:1234:5678::/64"
+  # ipv6_enabled_groups: []
   # lazy_connection_enabled: false
   # auto_update_always: true
   # auto_update_version: "latest"

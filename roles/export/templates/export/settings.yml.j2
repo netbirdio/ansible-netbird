@@ -48,6 +48,15 @@ netbird_settings:
 {% if s.network_range is defined and s.network_range is not none %}
   network_range: "{{ s.network_range }}"
 {% endif %}
+{% if s.network_range_v6 is defined and s.network_range_v6 is not none %}
+  network_range_v6: "{{ s.network_range_v6 }}"
+{% endif %}
+{% if s.ipv6_enabled_groups is defined and s.ipv6_enabled_groups is not none and s.ipv6_enabled_groups | length > 0 %}
+  ipv6_enabled_groups:
+{% for gid in s.ipv6_enabled_groups %}
+    - {{ group_id_map[gid] | default(gid) }}
+{% endfor %}
+{% endif %}
 {% if s.lazy_connection_enabled is defined %}
   lazy_connection_enabled: {{ s.lazy_connection_enabled | lower }}
 {% endif %}

@@ -1,0 +1,6 @@
+# Test-time dependencies for `ansible-test units`. Kept minimal -- the
+# unit tests under tests/unit/ exercise pure-Python helpers in
+# plugins/module_utils, so they need only pytest + mock (both supplied
+# by ansible-test's default container, but pinned here for clarity).
+pytest
+mock

@@ -208,4 +208,3 @@
     - name: Display policy summary
       ansible.builtin.debug:
         msg: "Total policies: {{ all_policies.count }}"
-

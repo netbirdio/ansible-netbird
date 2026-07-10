@@ -15,4 +15,3 @@
   loop_control:
     label: "{{ item.name }}"
   when: netbird_policies | length > 0
-

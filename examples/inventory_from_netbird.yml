@@ -97,4 +97,3 @@
     - name: Display inventory location
       ansible.builtin.debug:
         msg: "Inventory written to: {{ inventory_output_file }}"
-

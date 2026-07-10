@@ -17,7 +17,7 @@ description:
   - Tokens are used for API authentication.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -61,10 +61,16 @@ EXAMPLES = r'''
     expires_in: 365
     state: present
   register: new_token
+  # The created token's secret (token.plain_token) is returned ONLY on
+  # creation. The registered result is sensitive — never print it.
 
-- name: Display the token value (only available on creation)
-  ansible.builtin.debug:
-    msg: "Token: {{ new_token.token.plain_token }}"
+- name: Persist the new token value securely (only available on creation)
+  ansible.builtin.copy:
+    content: "{{ new_token.token.plain_token }}"
+    dest: "/root/.netbird_token"
+    mode: "0600"
+  no_log: true  # never write a credential to the job log
+  when: new_token.token.plain_token is defined
 
 - name: Delete a token
   community.ansible_netbird.netbird_token:
@@ -100,7 +106,11 @@ token:
       description: Last used timestamp.
       type: str
     plain_token:
-      description: The actual token value (only returned on creation).
+      description:
+        - The actual token value (only returned on creation).
+        - This is a live credential. Ansible cannot mark an individual return
+          field as sensitive at runtime, so set C(no_log) to C(true) on any
+          task that registers or handles this result to keep it out of logs.
       type: str
 '''
 
@@ -114,7 +124,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_token_by_name(api, user_id, name):
     """Find a token by name for a specific user."""
-    tokens, _ = api.list_tokens(user_id)
+    tokens, _unused = api.list_tokens(user_id)
     for token in (tokens or []):
         if token.get('name') == name:
             return token
@@ -127,7 +137,9 @@ def run_module():
     argument_spec.update(
         state=dict(type='str', choices=['present', 'absent'], default='present'),
         user_id=dict(type='str', required=True),
-        token_id=dict(type='str'),
+        # no_log: token_id is an opaque credential identifier; keep it out of
+        # invocation logs to avoid enumeration/correlation of tokens.
+        token_id=dict(type='str', no_log=True),
         name=dict(type='str'),
         expires_in=dict(type='int')
     )
@@ -145,7 +157,8 @@ def run_module():
         module,
         module.params['api_url'],
         module.params['api_token'],
-        module.params['validate_certs']
+        module.params['validate_certs'],
+        timeout=module.params['timeout']
     )
 
     state = module.params['state']
@@ -179,7 +192,7 @@ def run_module():
         # state == 'present'
         # Check if token with this name already exists
         existing_token = find_token_by_name(api, user_id, name)
-        
+
         if existing_token:
             # Token exists, return it (we can't update tokens)
             result['token'] = existing_token
@@ -187,12 +200,22 @@ def run_module():
         else:
             # Create new token
             if not module.check_mode:
-                token, _ = api.create_token(
+                token, _unused = api.create_token(
                     user_id,
                     name=name,
                     expires_in=expires_in
                 )
                 result['token'] = token
+                # The creation response carries a one-time plaintext secret
+                # (plain_token). Ansible cannot flag a single return value as
+                # no_log, so warn the operator to protect it.
+                if isinstance(token, dict) and token.get('plain_token'):
+                    module.warn(
+                        "A new personal access token was created; its secret "
+                        "is in the 'plain_token' return field and is shown "
+                        "only once. Store it securely and set no_log: true on "
+                        "tasks that register or handle this result."
+                    )
             result['changed'] = True
 
         module.exit_json(**result)
@@ -207,5 +230,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

@@ -33,4 +33,3 @@
   loop_control:
     label: "{{ item.name }}"
   when: netbird_service_users | length > 0
-

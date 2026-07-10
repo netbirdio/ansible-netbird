@@ -18,7 +18,8 @@
     routing_peer_dns_resolution_enabled: "{{ netbird_account_settings.routing_peer_dns_resolution_enabled | default(omit) }}"
     dns_domain: "{{ netbird_account_settings.dns_domain | default(omit) }}"
     network_range: "{{ netbird_account_settings.network_range | default(omit) }}"
+    network_range_v6: "{{ netbird_account_settings.network_range_v6 | default(omit) }}"
+    ipv6_enabled_groups: "{{ netbird_account_settings.ipv6_enabled_groups | default(omit) }}"
     lazy_connection_enabled: "{{ netbird_account_settings.lazy_connection_enabled | default(omit) }}"
     state: present
   when: netbird_account_settings | length > 0
-

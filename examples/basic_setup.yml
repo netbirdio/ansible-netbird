@@ -127,4 +127,3 @@
     - name: Display network info
       ansible.builtin.debug:
         msg: "Created networks: {{ internal_network.network.name }}, {{ services_network.network.name }}"
-

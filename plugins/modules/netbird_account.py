@@ -17,7 +17,7 @@ description:
   - Configure peer login expiration, JWT settings, and other account-wide settings.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -79,6 +79,16 @@ options:
     description:
       - Custom network range for the account in CIDR format.
     type: str
+  network_range_v6:
+    description:
+      - Custom IPv6 network range for the account in CIDR format.
+    type: str
+  ipv6_enabled_groups:
+    description:
+      - Peers in the selected groups will receive IPv6 overlay addresses (dual-stack).
+      - Remove all groups to disable IPv6.
+    type: list
+    elements: str
   lazy_connection_enabled:
     description:
       - Enable or disable experimental lazy connection.
@@ -240,7 +250,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 def build_settings_update(module):
     """Build the settings update object from module parameters."""
     settings = {}
-    
+
     # Map module parameters to API settings fields
     param_mapping = {
         'peer_login_expiration_enabled': 'peer_login_expiration_enabled',
@@ -255,9 +265,11 @@ def build_settings_update(module):
         'routing_peer_dns_resolution_enabled': 'routing_peer_dns_resolution_enabled',
         'dns_domain': 'dns_domain',
         'network_range': 'network_range',
+        'network_range_v6': 'network_range_v6',
+        'ipv6_enabled_groups': 'ipv6_enabled_groups',
         'lazy_connection_enabled': 'lazy_connection_enabled'
     }
-    
+
     for param, api_field in param_mapping.items():
         value = module.params.get(param)
         if value is not None:
@@ -322,6 +334,8 @@ def run_module():
         routing_peer_dns_resolution_enabled=dict(type='bool'),
         dns_domain=dict(type='str'),
         network_range=dict(type='str'),
+        network_range_v6=dict(type='str'),
+        ipv6_enabled_groups=dict(type='list', elements='str'),
         lazy_connection_enabled=dict(type='bool'),
         extra_peer_approval_enabled=dict(type='bool'),
         extra_user_approval_required=dict(type='bool'),
@@ -343,7 +357,8 @@ def run_module():
         module,
         module.params['api_url'],
         module.params['api_token'],
-        module.params['validate_certs']
+        module.params['validate_certs'],
+        timeout=module.params['timeout']
     )
 
     state = module.params['state']
@@ -356,11 +371,11 @@ def run_module():
 
     try:
         # Get accounts
-        accounts, _ = api.list_accounts()
-        
+        accounts, _unused = api.list_accounts()
+
         if not accounts:
             module.fail_json(msg="No accounts found")
-        
+
         # Use specified account or first one
         if account_id:
             account = None
@@ -383,17 +398,17 @@ def run_module():
 
         # state == 'present'
         desired_settings = build_settings_update(module)
-        
+
         if desired_settings:
             current_settings = account.get('settings', {})
-            
+
             if settings_need_update(current_settings, desired_settings):
                 if not module.check_mode:
                     # Build full settings update
                     update_data = {
                         'settings': {**current_settings, **desired_settings}
                     }
-                    updated_account, _ = api.update_account(account_id, update_data)
+                    updated_account, _unused = api.update_account(account_id, update_data)
                     result['account'] = updated_account
                 else:
                     result['account'] = account
@@ -415,5 +430,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

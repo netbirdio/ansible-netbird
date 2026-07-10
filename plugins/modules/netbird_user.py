@@ -17,7 +17,7 @@ description:
   - Supports both regular users and service users.
 version_added: "1.0.0"
 author:
-  - Community
+  - NetBird (@netbirdio)
 options:
   state:
     description:
@@ -165,7 +165,7 @@ from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_
 
 def find_user_by_email(api, email):
     """Find a user by email address."""
-    users, _ = api.list_users()
+    users, _unused = api.list_users()
     for user in (users or []):
         if user.get('email') == email:
             return user
@@ -174,7 +174,7 @@ def find_user_by_email(api, email):
 
 def find_user_by_name(api, name, is_service_user=False):
     """Find a service user by name."""
-    users, _ = api.list_users(service_user=is_service_user)
+    users, _unused = api.list_users(service_user=is_service_user)
     for user in (users or []):
         if user.get('name') == name:
             return user
@@ -187,13 +187,13 @@ def user_needs_update(current, desired):
         if key in desired and desired[key] is not None:
             if current.get(key) != desired[key]:
                 return True
-    
+
     if 'auto_groups' in desired and desired['auto_groups'] is not None:
         current_groups = set(extract_ids(current.get('auto_groups') or []))
         desired_groups = set(extract_ids(desired['auto_groups'] or []))
         if current_groups != desired_groups:
             return True
-    
+
     return False
 
 
@@ -227,7 +227,8 @@ def run_module():
         module,
         module.params['api_url'],
         module.params['api_token'],
-        module.params['validate_certs']
+        module.params['validate_certs'],
+        timeout=module.params['timeout']
     )
 
     state = module.params['state']
@@ -272,7 +273,7 @@ def run_module():
         # Find existing user
         existing_user = None
         if user_id:
-            existing_user, _ = api.get_user(user_id)
+            existing_user, _unused = api.get_user(user_id)
         elif email:
             existing_user = find_user_by_email(api, email)
         elif name and is_service_user:
@@ -300,7 +301,7 @@ def run_module():
 
             if user_needs_update(existing_user, desired):
                 if not module.check_mode:
-                    user, _ = api.update_user(
+                    user, _unused = api.update_user(
                         existing_user['id'],
                         role=role,
                         auto_groups=effective_auto_groups,
@@ -318,7 +319,7 @@ def run_module():
                 module.fail_json(msg="email is required when creating a regular user")
 
             if not module.check_mode:
-                user, _ = api.create_user(
+                user, _unused = api.create_user(
                     email=email,
                     name=name,
                     role=role,
@@ -340,5 +341,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
