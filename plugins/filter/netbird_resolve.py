@@ -462,7 +462,7 @@ def netbird_value_problems(policies, setup_keys=None):
     value checks that are unambiguous and stable regardless of NetBird API
     version (so they won't false-positive): policy rule ports / port ranges
     must be integers in 1-65535 with start <= end, and setup-key ``expires_in``
-    must be a positive integer. Notably this catches inverted port ranges,
+    must be a non-negative integer, where 0 means "never expires".
     which the NetBird API itself accepts silently.
 
     CIDR / DNS-record / posture-check value validation is deliberately NOT done
@@ -503,9 +503,10 @@ def netbird_value_problems(policies, setup_keys=None):
             continue
         if sk.get('expires_in') is not None:
             iv = _as_port_int(sk.get('expires_in'))
-            if iv is None or iv <= 0:
+            if iv is None or iv < 0:
                 problems.append(
-                    "setup key '%s': expires_in must be a positive integer (got %r)"
+                    "setup key '%s': expires_in must be a non-negative integer "
+                    "(0 means never expires; got %r)"
                     % (sk.get('name', '<unnamed>'), sk.get('expires_in')))
     return problems
 
