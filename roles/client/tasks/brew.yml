@@ -1,0 +1,51 @@
+---
+- name: Check for an existing Homebrew install
+  ansible.builtin.command: brew ls --versions netbird
+  register: _brew_netbird
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# install.sh always reinstalls; here it only happens when asked.
+- name: Remove the existing Homebrew install
+  when:
+    - _brew_netbird.rc == 0
+    - allow_homebrew_reinstall | bool
+  block:
+    # install.sh ignores errors here too: the service may already be stopped
+    # or not installed.
+    - name: Stop and uninstall the NetBird service
+      ansible.builtin.command: "netbird service {{ item }}"
+      register: _brew_service_removal
+      changed_when: _brew_service_removal.rc == 0
+      failed_when: false
+      become: true
+      loop: [stop, uninstall]
+
+    - name: Unlink the Homebrew package
+      ansible.builtin.command: brew unlink netbird
+      changed_when: true
+
+- name: Install NetBird with Homebrew
+  ansible.builtin.command:
+    argv: [brew, install, netbirdio/tap/netbird]
+  register: _brew_install
+  changed_when: "'already installed' not in _brew_install.stderr"
+  when: _brew_netbird.rc != 0 or allow_homebrew_reinstall | bool
+
+- name: Upgrade NetBird with Homebrew
+  ansible.builtin.command:
+    argv: [brew, upgrade, netbirdio/tap/netbird]
+  register: _brew_upgrade
+  changed_when: "'already installed' not in (_brew_upgrade.stdout ~ _brew_upgrade.stderr)"
+  when:
+    - _brew_netbird.rc == 0
+    - not (allow_homebrew_reinstall | bool)
+    - netbird_package_state == 'latest'
+
+- name: Install the NetBird UI cask
+  ansible.builtin.command:
+    argv: [brew, install, --cask, netbirdio/tap/netbird-ui]
+  register: _brew_ui_install
+  changed_when: "'already installed' not in _brew_ui_install.stderr"
+  when: install_netbird_ui | bool

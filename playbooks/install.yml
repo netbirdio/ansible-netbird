@@ -1,0 +1,23 @@
+---
+# Playbook: Install the NetBird client
+#
+# Thin wrapper around the community.ansible_netbird.client role, which mirrors
+# release_files/install.sh from netbirdio/netbird using the NetBird package
+# repositories. See docs/install.md.
+#
+#   ansible-playbook -i inventory.ini community.ansible_netbird.install --ask-become-pass
+#
+# Enroll with a self-hosted management server:
+#   ansible-playbook -i inventory.ini community.ansible_netbird.install \
+#     -e netbird_setup_key="$NETBIRD_SETUP_KEY" \
+#     -e netbird_setup_management_url=https://netbird.example.org
+#
+# Optional variables:
+#   - target_hosts: Host or group to run on (default: netbird)
+
+- name: Install NetBird from packages
+  hosts: "{{ target_hosts | default('netbird') }}"
+  gather_facts: true
+  become: false
+  roles:
+    - role: community.ansible_netbird.client

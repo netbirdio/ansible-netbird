@@ -1,0 +1,94 @@
+---
+- name: Manage the NetBird service
+  when: not (netbird_pending_reboot | default(false) | bool)
+  block:
+    - name: Check for the NetBird systemd unit
+      ansible.builtin.command: systemctl cat netbird.service  # noqa: command-instead-of-module
+      register: _netbird_unit
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: ansible_facts['service_mgr'] | default('') == 'systemd'
+
+    # The packages install the service in their post-install script. This
+    # covers hosts where that did not happen, and Homebrew, which never does.
+    - name: Install the NetBird service
+      ansible.builtin.command: netbird service install
+      register: _netbird_service_install
+      changed_when: _netbird_service_install.rc == 0
+      failed_when: >-
+        _netbird_service_install.rc != 0
+        and 'already' not in (_netbird_service_install.stdout ~ _netbird_service_install.stderr)
+      become: true
+      when:
+        - netbird_package_manager != 'pkg'
+        - start_netbird_service | bool or enable_netbird_service | bool
+        - _netbird_unit.rc | default(1) != 0
+
+    - name: Enable and start the NetBird service
+      ansible.builtin.service:
+        name: netbird
+        enabled: "{{ enable_netbird_service | bool }}"
+        state: "{{ 'started' if start_netbird_service | bool else omit }}"
+      become: true
+      when: ansible_facts['system'] == 'Linux'
+
+    - name: Start the NetBird service
+      ansible.builtin.command: netbird service start
+      register: _netbird_service_start
+      changed_when: _netbird_service_start.rc == 0
+      failed_when: >-
+        _netbird_service_start.rc != 0
+        and 'already' not in (_netbird_service_start.stdout ~ _netbird_service_start.stderr)
+      become: true
+      when:
+        - ansible_facts['system'] != 'Linux'
+        - netbird_package_manager != 'pkg'
+        - start_netbird_service | bool
+
+    - name: Enroll with the setup key
+      when: netbird_setup_key | length > 0
+      block:
+        - name: Wait for the NetBird daemon
+          ansible.builtin.command: netbird status
+          register: _netbird_status
+          changed_when: false
+          failed_when: false
+          check_mode: false
+          retries: 15
+          delay: 2
+          until: "'failed to connect to daemon' not in _netbird_status.stderr"
+
+        - name: Run netbird up
+          ansible.builtin.command:
+            argv: >-
+              {{ ['netbird', 'up']
+                 + (['--management-url', netbird_setup_management_url] if netbird_setup_management_url | length > 0 else []) }}
+          environment:
+            NB_SETUP_KEY: "{{ netbird_setup_key }}"
+          register: _netbird_up
+          changed_when: true
+          become: true
+          no_log: true
+          when: >-
+            force_netbird_setup_key | bool
+            or 'Management: Connected' not in _netbird_status.stdout
+            or 'Signal: Connected' not in _netbird_status.stdout
+
+        # netbird up can exit 0 without logging in, for example when TLS to the
+        # management server fails, so confirm the result.
+        - name: Verify enrollment
+          ansible.builtin.command: netbird status
+          register: _netbird_enrolled
+          changed_when: false
+          retries: 15
+          delay: 2
+          until: "'Management: Connected' in _netbird_enrolled.stdout"
+          when: _netbird_up is not skipped
+
+- name: Show next step
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'NetBird will be installed after the rpm-ostree reboot.' if netbird_pending_reboot | default(false) | bool
+         else 'NetBird is enrolled.' if netbird_setup_key | length > 0
+         else "NetBird is installed. Run 'netbird up' on the host to connect." }}

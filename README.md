@@ -858,6 +858,18 @@ The `examples/` directory contains complete playbook examples:
 - `inventory_from_netbird.yml` - Export peers as Ansible inventory
 - `peer_management.yml` - Manage and audit peers
 
+## Installing the NetBird Client
+
+The `client` role installs the NetBird client from the official package repositories, following the upstream [`install.sh`](https://github.com/netbirdio/netbird/blob/main/release_files/install.sh), and can enroll each host with a setup key:
+
+```bash
+ansible-playbook -i inventory.ini community.ansible_netbird.install \
+  -e netbird_setup_key="$NETBIRD_SETUP_KEY" \
+  -e netbird_setup_management_url=https://netbird.example.org
+```
+
+See [docs/install.md](docs/install.md) for supported platforms and all variables.
+
 ## Config as Code (IaC Roles)
 
 This collection includes roles and playbooks for managing your entire NetBird configuration as YAML files in Git — with preview/diff, strict mode, and automatic name-to-ID resolution.

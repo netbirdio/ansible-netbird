@@ -1,0 +1,20 @@
+---
+# file: netbird matches the /etc/yum.repos.d/netbird.repo that install.sh
+# writes, so both never define the NetBird repository twice.
+- name: Configure the NetBird repository
+  ansible.builtin.yum_repository:
+    name: NetBird
+    file: netbird
+    description: NetBird
+    baseurl: "{{ netbird_yum_baseurl }}"
+    enabled: true
+    gpgcheck: true
+    repo_gpgcheck: true
+    gpgkey: "{{ netbird_yum_gpgkey }}"
+  become: true
+
+- name: Install NetBird
+  ansible.builtin.package:
+    name: "{{ ['netbird'] + (['netbird-ui'] if install_netbird_ui | bool else []) }}"
+    state: "{{ netbird_package_state }}"
+  become: true

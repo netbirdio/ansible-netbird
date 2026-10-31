@@ -1,0 +1,66 @@
+---
+- name: Reject netbird_package_state=latest on rpm-ostree
+  ansible.builtin.assert:
+    that:
+      - netbird_package_state == 'present'
+    fail_msg: >-
+      netbird_package_state=latest is not supported with rpm-ostree. Update NetBird with
+      "rpm-ostree upgrade" (or your image updates) instead.
+
+- name: Configure the NetBird repository
+  ansible.builtin.yum_repository:
+    name: NetBird
+    file: netbird
+    description: NetBird
+    baseurl: "{{ netbird_yum_baseurl }}"
+    enabled: true
+    gpgcheck: true
+    repo_gpgcheck: true
+    gpgkey: "{{ netbird_yum_gpgkey }}"
+  become: true
+
+- name: Read rpm-ostree status
+  ansible.builtin.command: rpm-ostree status --json
+  register: _rpm_ostree_status
+  changed_when: false
+  check_mode: false
+
+- name: Layer NetBird packages
+  vars:
+    _wanted: "{{ ['netbird'] + (['netbird-ui'] if install_netbird_ui | bool else []) }}"
+    _requested: "{{ (_rpm_ostree_status.stdout | from_json).deployments[0]['requested-packages'] | default([]) }}"
+    _missing: "{{ _wanted | difference(_requested) }}"
+  ansible.builtin.command:
+    argv: "{{ ['rpm-ostree', 'install', '--idempotent', '-y'] + _missing }}"
+  register: _rpm_ostree_install
+  changed_when: true
+  when: _missing | length > 0
+  become: true
+
+- name: Check whether the booted deployment has NetBird
+  ansible.builtin.command: rpm -q netbird  # noqa: command-instead-of-module
+  register: _rpm_ostree_booted_netbird
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Reboot into the deployment with NetBird
+  ansible.builtin.reboot:
+    reboot_timeout: 900
+  become: true
+  when:
+    - _rpm_ostree_booted_netbird.rc != 0
+    - rpm_ostree_reboot | bool
+
+- name: Note that a reboot is pending
+  ansible.builtin.debug:
+    msg: >-
+      NetBird is layered into the next rpm-ostree deployment. Reboot the host (or set
+      rpm_ostree_reboot=true) and run the playbook again to start the service and enroll.
+  when:
+    - _rpm_ostree_booted_netbird.rc != 0
+    - not (rpm_ostree_reboot | bool)
+
+- name: Record whether NetBird is available in the booted deployment
+  ansible.builtin.set_fact:
+    netbird_pending_reboot: "{{ _rpm_ostree_booted_netbird.rc != 0 and not (rpm_ostree_reboot | bool) }}"

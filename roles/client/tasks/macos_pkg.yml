@@ -1,0 +1,35 @@
+---
+- name: Check for an installed NetBird package
+  ansible.builtin.stat:
+    path: /Library/Receipts/netbird.pkg
+  register: _macos_receipt
+
+- name: Install the NetBird package
+  when: not _macos_receipt.stat.exists or netbird_package_state == 'latest'
+  block:
+    - name: Create a private download directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: netbird.
+      register: _pkg_tmp
+      changed_when: false
+
+    - name: Download the NetBird package
+      ansible.builtin.get_url:
+        url: "{{ netbird_macos_pkg_url }}/{{ netbird_arch }}"
+        dest: "{{ _pkg_tmp.path }}/netbird.pkg"
+        mode: "0600"
+      changed_when: false
+
+    - name: Run the macOS installer
+      ansible.builtin.command:
+        argv: [installer, -pkg, "{{ _pkg_tmp.path }}/netbird.pkg", -target, /]
+      changed_when: true
+      become: true
+  always:
+    - name: Remove the private download directory
+      ansible.builtin.file:
+        path: "{{ _pkg_tmp.path }}"
+        state: absent
+      changed_when: false
+      when: _pkg_tmp.path is defined

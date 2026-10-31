@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - 'client - new role that installs the NetBird client the same way as the
+    upstream ``install.sh`` script (apt, dnf/yum, rpm-ostree, macOS pkg and
+    Homebrew), optionally installs the desktop UI, and enrolls the peer with
+    a setup key. The ``install.yml`` playbook is a thin wrapper around it.'
