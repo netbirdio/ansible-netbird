@@ -1,0 +1,229 @@
+# {{ ansible_managed }}
+{% set logging %}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "2"
+{% endset %}
+{% if use_builtin_traefik | bool %}
+{%   set networks = '[netbird]' %}
+{% elif use_external_traefik | bool %}
+{%   set networks = '[' ~ traefik_external_network ~ ']' %}
+{% elif netbird_external_proxy_network | length > 0 %}
+{%   set networks = '[netbird, ' ~ netbird_external_proxy_network ~ ']' %}
+{% else %}
+{%   set networks = '[netbird]' %}
+{% endif %}
+{% set entrypoint = 'websecure' if use_builtin_traefik | bool else traefik_entrypoint %}
+{% set certresolver = 'letsencrypt' if use_builtin_traefik | bool else netbird_effective_certresolver %}
+{% set grpc_paths = ['/signalexchange.SignalExchange/', '/management.ManagementService/', '/management.ProxyService/'] %}
+services:
+{% if use_builtin_traefik | bool %}
+  # Traefik reverse proxy (automatic TLS via Let's Encrypt)
+  traefik:
+    image: {{ traefik_image }}
+    container_name: netbird-traefik
+    restart: unless-stopped
+    networks:
+      netbird:
+        ipv4_address: {{ traefik_ip }}
+    command:
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network={{ netbird_compose_project }}_netbird"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.allowACMEByPass=true"
+      - "--entrypoints.web.http.aliasHeadersStrategy=delete"
+      - "--entrypoints.websecure.http.aliasHeadersStrategy=delete"
+      # Disable timeouts for long-lived gRPC streams
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=0"
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=0"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=0"
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt ACME
+      - "--certificatesresolvers.letsencrypt.acme.email={{ traefik_acme_email }}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+{% if traefik_acme_ca_server | length > 0 %}
+      - "--certificatesresolvers.letsencrypt.acme.caserver={{ traefik_acme_ca_server }}"
+{% endif %}
+      # gRPC transport settings
+      - "--serverstransport.forwardingtimeouts.responseheadertimeout=0s"
+      - "--serverstransport.forwardingtimeouts.idleconntimeout=0s"
+{% if use_netbird_proxy | bool %}
+      - "--providers.file.filename=/etc/traefik/dynamic.yaml"
+{% endif %}
+    ports:
+      - '443:443'
+      - '80:80'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - netbird_traefik_letsencrypt:/letsencrypt
+{% if use_netbird_proxy | bool %}
+      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+{% endif %}
+{{ logging }}
+{% endif %}
+  # UI dashboard
+  dashboard:
+    image: {{ dashboard_image }}
+    container_name: netbird-dashboard
+    restart: unless-stopped
+    networks: {{ networks }}
+{% if use_exposed_ports | bool %}
+    ports:
+      - '{{ netbird_bind_address }}:{{ dashboard_host_port }}:80'
+{% endif %}
+    env_file:
+      - ./dashboard.env
+{% if use_builtin_traefik | bool or use_external_traefik | bool %}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.netbird-dashboard.rule=Host(`{{ netbird_effective_domain }}`)
+      - traefik.http.routers.netbird-dashboard.entrypoints={{ entrypoint }}
+      - traefik.http.routers.netbird-dashboard.tls=true
+{%   if certresolver | length > 0 %}
+      - traefik.http.routers.netbird-dashboard.tls.certresolver={{ certresolver }}
+{%   endif %}
+      - traefik.http.routers.netbird-dashboard.service=netbird-dashboard
+      - traefik.http.routers.netbird-dashboard.priority=1
+      - traefik.http.services.netbird-dashboard.loadbalancer.server.port=80
+{% endif %}
+{{ logging }}
+  # Combined server (Management + Signal + Relay + STUN)
+  netbird-server:
+    image: {{ netbird_server_image }}
+    container_name: netbird-server
+    restart: unless-stopped
+    networks: {{ networks }}
+    ports:
+{% if use_exposed_ports | bool %}
+      - '{{ netbird_bind_address }}:{{ management_host_port }}:80'
+{% endif %}
+      - '{{ netbird_stun_port }}:{{ netbird_stun_port }}/udp'
+    volumes:
+      - netbird_data:/var/lib/netbird
+      - ./config.yaml:/etc/netbird/config.yaml
+    command: ["--config", "/etc/netbird/config.yaml"]
+{% if use_builtin_traefik | bool or use_external_traefik | bool %}
+    labels:
+      - traefik.enable=true
+      # gRPC router (needs h2c backend for HTTP/2 cleartext)
+      - traefik.http.routers.netbird-grpc.rule=Host(`{{ netbird_effective_domain }}`) && ({% for p in grpc_paths %}PathPrefix(`{{ p }}`){{ ' || ' if not loop.last else '' }}{% endfor %})
+      - traefik.http.routers.netbird-grpc.entrypoints={{ entrypoint }}
+      - traefik.http.routers.netbird-grpc.tls=true
+{%   if certresolver | length > 0 %}
+      - traefik.http.routers.netbird-grpc.tls.certresolver={{ certresolver }}
+{%   endif %}
+      - traefik.http.routers.netbird-grpc.service=netbird-server-h2c
+      - traefik.http.routers.netbird-grpc.priority=100
+      # Backend router (relay, WebSocket, API, OAuth2)
+      - traefik.http.routers.netbird-backend.rule=Host(`{{ netbird_effective_domain }}`) && (PathPrefix(`/relay`) || PathPrefix(`/ws-proxy/`) || PathPrefix(`/api`) || PathPrefix(`/oauth2`))
+      - traefik.http.routers.netbird-backend.entrypoints={{ entrypoint }}
+      - traefik.http.routers.netbird-backend.tls=true
+{%   if certresolver | length > 0 %}
+      - traefik.http.routers.netbird-backend.tls.certresolver={{ certresolver }}
+{%   endif %}
+      - traefik.http.routers.netbird-backend.service=netbird-server
+      - traefik.http.routers.netbird-backend.priority=100
+      # Services
+      - traefik.http.services.netbird-server.loadbalancer.server.port=80
+      - traefik.http.services.netbird-server-h2c.loadbalancer.server.port=80
+      - traefik.http.services.netbird-server-h2c.loadbalancer.server.scheme=h2c
+{% endif %}
+{{ logging }}
+{% if use_netbird_proxy | bool %}
+  # NetBird Proxy - exposes internal resources to the internet
+  proxy:
+    image: {{ netbird_proxy_image }}
+    container_name: netbird-proxy
+    ports:
+      - 51820:51820/udp
+    restart: unless-stopped
+    networks: [netbird]
+    depends_on:
+      netbird-server:
+        condition: service_started
+{%   if use_crowdsec | bool %}
+      crowdsec:
+        condition: service_healthy
+{%   endif %}
+    env_file:
+      - ./proxy.env
+    volumes:
+      - netbird_proxy_certs:/certs
+    labels:
+      # TCP passthrough for any unmatched domain (proxy handles its own TLS)
+      - traefik.enable=true
+      - traefik.tcp.routers.proxy-passthrough.entrypoints=websecure
+{%   if netbird_proxy_require_subdomain | bool %}
+      - traefik.tcp.routers.proxy-passthrough.rule=HostSNIRegexp(`^.+\.{{ netbird_effective_domain | regex_escape }}$`)
+{%   else %}
+      - traefik.tcp.routers.proxy-passthrough.rule=HostSNI(`*`)
+{%   endif %}
+      - traefik.tcp.routers.proxy-passthrough.tls.passthrough=true
+      - traefik.tcp.routers.proxy-passthrough.service=proxy-tls
+      - traefik.tcp.routers.proxy-passthrough.priority=1
+      - traefik.tcp.services.proxy-tls.loadbalancer.server.port=8443
+      - traefik.tcp.services.proxy-tls.loadbalancer.serverstransport=pp-v2@file
+{{ logging }}
+{%   if use_crowdsec | bool %}
+  crowdsec:
+    image: {{ crowdsec_image }}
+    container_name: netbird-crowdsec
+    restart: unless-stopped
+    networks: [netbird]
+    environment:
+      COLLECTIONS: crowdsecurity/linux
+    volumes:
+      - ./crowdsec:/etc/crowdsec
+      - crowdsec_db:/var/lib/crowdsec/data
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    labels:
+      - traefik.enable=false
+{{ logging }}
+{%   endif %}
+{% endif %}
+volumes:
+  netbird_data:
+{% if use_builtin_traefik | bool %}
+  netbird_traefik_letsencrypt:
+{% endif %}
+{% if use_netbird_proxy | bool %}
+  netbird_proxy_certs:
+{% endif %}
+{% if use_crowdsec | bool %}
+  crowdsec_db:
+{% endif %}
+
+networks:
+{% if use_builtin_traefik | bool %}
+  netbird:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: {{ traefik_subnet }}
+          gateway: {{ traefik_gateway }}
+{% elif use_external_traefik | bool %}
+  {{ traefik_external_network }}:
+    external: true
+{% else %}
+  netbird:
+{%   if netbird_external_proxy_network | length > 0 %}
+  {{ netbird_external_proxy_network }}:
+    external: true
+{%   endif %}
+{% endif %}

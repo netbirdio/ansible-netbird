@@ -1,0 +1,201 @@
+---
+- name: Validate boolean options
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) | string | lower in ['true', 'false']
+    fail_msg: "{{ item }} must be true or false."
+    quiet: true
+  loop:
+    - netbird_agent_network
+    - builtin_traefik_enable_proxy
+    - builtin_traefik_enable_crowdsec
+    - netbird_proxy_require_subdomain
+    - bind_localhost_only
+    - start_netbird_services
+    - allow_existing_config
+    - wait_for_reverse_proxy
+    - netbird_validate_certs
+    - create_netbird_user
+    - external_traefik_install_config
+    - external_traefik_overwrite_existing_config
+    - external_traefik_start
+    - external_traefik_enable_dashboard
+    - nginx_install_config
+    - nginx_disable_default_site
+    - nginx_reload
+    - caddy_install_config
+    - caddy_reload
+    - npm_install_config
+    - npm_overwrite_existing_config
+    - npm_start
+    - npm_configure_proxy_host
+    - npm_proxy_host_ssl
+    - npm_ssl_forced
+    - npm_http2_support
+    - npm_hsts_enabled
+    - npm_hsts_subdomains
+    - npm_block_exploits
+    - npm_allow_websocket_upgrade
+
+- name: Validate NetBird domain
+  ansible.builtin.assert:
+    that:
+      - netbird_domain | length > 0
+      - netbird_domain != 'netbird.example.com'
+      - netbird_domain == 'use-ip' or netbird_domain is not match('^[0-9.]+$')
+      - >-
+        netbird_domain == 'use-ip' or netbird_domain is
+        match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
+    fail_msg: >-
+      Set netbird_domain to a fully qualified domain name such as netbird.example.org, with no
+      scheme, port or trailing dot. An IP address is not accepted; use "use-ip" to install on
+      the host's IPv4 address over plain HTTP.
+
+- name: Validate reverse proxy type
+  ansible.builtin.assert:
+    that:
+      - reverse_proxy_type in ['builtin_traefik', 'external_traefik', 'nginx', 'npm', 'caddy', 'manual']
+    fail_msg: "reverse_proxy_type must be one of builtin_traefik, external_traefik, nginx, npm, caddy, manual."
+
+- name: Restrict use-ip to the manual reverse proxy mode
+  ansible.builtin.assert:
+    that:
+      - reverse_proxy_type == 'manual'
+    fail_msg: >-
+      netbird_domain=use-ip serves NetBird over plain HTTP, which only works with
+      reverse_proxy_type=manual. Every other mode terminates TLS for a domain name.
+  when: netbird_domain == 'use-ip'
+
+- name: Validate agent-network preset
+  ansible.builtin.assert:
+    that:
+      - reverse_proxy_type == 'builtin_traefik'
+    fail_msg: "netbird_agent_network=true requires reverse_proxy_type=builtin_traefik."
+  when: netbird_agent_network | bool
+
+- name: Validate built-in Traefik settings
+  ansible.builtin.assert:
+    that:
+      - traefik_acme_email is match('^[^@\s]+@[^@\s]+\.[^@\s]+$')
+      - netbird_agent_network | bool or builtin_traefik_enable_proxy | bool or not (builtin_traefik_enable_crowdsec | bool)
+    fail_msg: >-
+      Built-in Traefik needs traefik_acme_email set to a valid address for Let's Encrypt, and
+      builtin_traefik_enable_crowdsec requires builtin_traefik_enable_proxy=true.
+  when: reverse_proxy_type == 'builtin_traefik'
+
+- name: Validate Traefik image version
+  vars:
+    _traefik_tag: "{{ traefik_image.split('/')[-1] }}"
+    _traefik_version: >-
+      {{ _traefik_tag | regex_search('^[^:@]+:v?([0-9]+(\.[0-9]+){0,2})$', '\1') | default([], true) | first | default('') }}
+  ansible.builtin.assert:
+    that:
+      - "'@' not in traefik_image"
+      - _traefik_version | length > 0
+      - _traefik_version is version('3.7.13', '>=')
+    fail_msg: >-
+      Cannot use traefik_image={{ traefik_image }}. Use a numeric Traefik version tag of v3.7.13
+      or newer without a digest; older releases lack aliasHeadersStrategy and its
+      header-sanitization fix.
+  when: >-
+    reverse_proxy_type == 'builtin_traefik' or
+    (reverse_proxy_type == 'external_traefik' and external_traefik_install_config | bool)
+
+- name: Validate external Traefik settings
+  ansible.builtin.assert:
+    that:
+      - traefik_entrypoint | length > 0
+      - traefik_external_network | length > 0
+    fail_msg: "reverse_proxy_type=external_traefik requires traefik_entrypoint and traefik_external_network."
+  when: reverse_proxy_type == 'external_traefik'
+
+- name: Validate external Traefik install settings
+  ansible.builtin.assert:
+    that:
+      - external_traefik_project_dir | length > 0
+      - external_traefik_acme_email is match('^[^@\s]+@[^@\s]+\.[^@\s]+$')
+      - external_traefik_certresolver | length > 0
+    fail_msg: >-
+      external_traefik_install_config=true requires external_traefik_project_dir,
+      external_traefik_acme_email and external_traefik_certresolver.
+  when:
+    - reverse_proxy_type == 'external_traefik'
+    - external_traefik_install_config | bool
+
+- name: Validate exposed port settings
+  ansible.builtin.assert:
+    that:
+      - dashboard_host_port | int > 0
+      - dashboard_host_port | int <= 65535
+      - management_host_port | int > 0
+      - management_host_port | int <= 65535
+      - dashboard_host_port | int != management_host_port | int
+    fail_msg: "dashboard_host_port and management_host_port must be two different valid TCP ports."
+  when: reverse_proxy_type in ['nginx', 'npm', 'caddy', 'manual']
+
+- name: Validate trusted proxy lists
+  ansible.builtin.assert:
+    that:
+      - trusted_peers is sequence and trusted_peers is not string
+      - trusted_http_proxies is sequence and trusted_http_proxies is not string
+    fail_msg: "trusted_peers and trusted_http_proxies must be lists of CIDR prefixes."
+
+- name: Validate nginx install settings
+  ansible.builtin.assert:
+    that:
+      - nginx_ssl_certificate | length > 0
+      - nginx_ssl_certificate_key | length > 0
+      - nginx_config_path | length > 0
+    fail_msg: >-
+      nginx_install_config=true requires nginx_ssl_certificate, nginx_ssl_certificate_key and
+      nginx_config_path.
+  when:
+    - reverse_proxy_type == 'nginx'
+    - nginx_install_config | bool
+
+- name: Validate Caddy install settings
+  ansible.builtin.assert:
+    that:
+      - caddy_config_path | length > 0
+      - caddy_acme_email | length == 0 or caddy_acme_email is match('^[^@\s]+@[^@\s]+\.[^@\s]+$')
+    fail_msg: "caddy_install_config=true requires caddy_config_path, and caddy_acme_email must be a valid address when set."
+  when:
+    - reverse_proxy_type == 'caddy'
+    - caddy_install_config | bool
+
+- name: Validate Nginx Proxy Manager install settings
+  ansible.builtin.assert:
+    that:
+      - npm_project_dir | length > 0
+      - npm_image | length > 0
+      - npm_network | length > 0
+      - npm_http_port | int > 0 and npm_http_port | int <= 65535
+      - npm_https_port | int > 0 and npm_https_port | int <= 65535
+      - npm_admin_port | int > 0 and npm_admin_port | int <= 65535
+    fail_msg: >-
+      npm_install_config=true requires npm_project_dir, npm_image, npm_network and valid
+      npm_http_port, npm_https_port and npm_admin_port values.
+  when:
+    - reverse_proxy_type == 'npm'
+    - npm_install_config | bool
+
+- name: Validate Nginx Proxy Manager API settings
+  ansible.builtin.assert:
+    that:
+      - npm_admin_identity | length > 0
+      - npm_admin_secret | length > 0
+      - not (npm_hsts_subdomains | bool) or (npm_hsts_enabled | bool)
+      - npm_existing_certificate_id | int >= 0
+    fail_msg: >-
+      npm_configure_proxy_host=true requires npm_admin_identity and npm_admin_secret, and
+      npm_hsts_subdomains requires npm_hsts_enabled=true.
+  when:
+    - reverse_proxy_type == 'npm'
+    - npm_configure_proxy_host | bool
+
+- name: Validate NetBird user name
+  ansible.builtin.assert:
+    that:
+      - netbird_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+    fail_msg: "netbird_user must be a valid Linux user name."
+  when: create_netbird_user | bool

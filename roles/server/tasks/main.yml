@@ -1,0 +1,28 @@
+---
+- name: Validate variables
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Derive deployment facts
+  ansible.builtin.import_tasks: facts.yml
+
+- name: Check host prerequisites
+  ansible.builtin.import_tasks: prerequisites.yml
+
+- name: Install external proxy runtimes
+  ansible.builtin.import_tasks: external_runtimes.yml
+
+- name: Load or generate secrets
+  ansible.builtin.import_tasks: keys.yml
+
+- name: Render NetBird files
+  ansible.builtin.import_tasks: render.yml
+
+- name: Install external reverse proxy config
+  ansible.builtin.import_tasks: reverse_proxy.yml
+
+- name: Start NetBird
+  ansible.builtin.import_tasks: start.yml
+  when: start_netbird_services | bool
+
+- name: Show deployment summary
+  ansible.builtin.import_tasks: summary.yml

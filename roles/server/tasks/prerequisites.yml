@@ -1,0 +1,127 @@
+---
+- name: Check Docker socket
+  ansible.builtin.stat:
+    path: "{{ docker_socket_path }}"
+  register: _docker_socket
+
+- name: Fail when Docker socket is missing
+  ansible.builtin.fail:
+    msg: >-
+      Docker socket {{ docker_socket_path }} was not found. Install Docker Engine first:
+      https://docs.docker.com/engine/install/
+  when: not _docker_socket.stat.exists
+
+- name: Create NetBird user
+  when: create_netbird_user | bool
+  block:
+    - name: Require the standard docker group on the socket
+      ansible.builtin.assert:
+        that:
+          - _docker_socket.stat.gr_name | default('') == 'docker'
+        fail_msg: >-
+          create_netbird_user=true requires {{ docker_socket_path }} to be owned by the standard
+          'docker' group, but it is owned by
+          '{{ _docker_socket.stat.gr_name | default(_docker_socket.stat.gid) }}'.
+
+    - name: Ensure NetBird user exists with Docker access
+      ansible.builtin.user:
+        name: "{{ netbird_user }}"
+        groups: [docker]
+        append: true
+        shell: /bin/bash
+        create_home: true
+        state: present
+      become: true
+      register: _netbird_user_account
+
+- name: Set project directory
+  vars:
+    _home: "{{ _netbird_user_account.home if create_netbird_user | bool else ansible_facts['user_dir'] }}"
+    _dir: "{{ netbird_project_dir if netbird_project_dir | length > 0 else _home ~ '/netbird' }}"
+  ansible.builtin.set_fact:
+    netbird_project_path: "{{ _dir }}"
+    netbird_compose_project: >-
+      {{ _dir | basename | lower | regex_replace('[^a-z0-9_-]', '') | regex_replace('^[_-]+', '') }}
+
+- name: Fail when the Compose project name is empty
+  ansible.builtin.fail:
+    msg: "The last component of netbird_project_dir must contain letters or digits; it names the Compose project."
+  when: netbird_compose_project | length == 0
+
+- name: Check Docker access
+  ansible.builtin.command: docker info
+  register: _docker_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: "{{ create_netbird_user | bool }}"
+  become_user: "{{ netbird_run_as }}"
+
+- name: Fail with Docker group guidance
+  ansible.builtin.fail:
+    msg: |
+      {{ netbird_run_as }} cannot access the Docker socket {{ docker_socket_path }}
+      (owner={{ _docker_socket.stat.pw_name | default(_docker_socket.stat.uid) }},
+      group={{ _docker_socket.stat.gr_name | default(_docker_socket.stat.gid) }},
+      mode={{ _docker_socket.stat.mode }}).
+
+      {{ netbird_run_as }} may need to be added to the 'docker' group:
+
+        sudo usermod -aG docker {{ netbird_run_as }}
+
+      Then log out and back in (or reset the Ansible connection) and run the playbook again.
+  when:
+    - _docker_info.rc != 0
+    - _docker_socket.stat.gr_name | default('') == 'docker'
+
+- name: Fail with generic Docker socket guidance
+  ansible.builtin.fail:
+    msg: |
+      {{ netbird_run_as }} cannot access the Docker socket {{ docker_socket_path }}.
+      The socket is owned by the '{{ _docker_socket.stat.gr_name | default(_docker_socket.stat.gid) }}'
+      group, which is not the standard 'docker' group, so this playbook will not suggest joining it.
+      Run the playbook as a user that already has Docker access, or follow Docker's
+      post-install steps: https://docs.docker.com/engine/install/linux-postinstall/
+  when:
+    - _docker_info.rc != 0
+    - _docker_socket.stat.gr_name | default('') != 'docker'
+
+- name: Check for Docker Compose v2
+  ansible.builtin.command: docker compose version
+  register: _compose_v2
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Check for standalone docker-compose
+  ansible.builtin.command: docker-compose version
+  register: _compose_v1
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: _compose_v2.rc != 0
+
+- name: Fail when Docker Compose is unavailable
+  ansible.builtin.fail:
+    msg: >-
+      Docker Compose is not installed or not in PATH. Install the Docker Compose plugin:
+      https://docs.docker.com/compose/install/
+  when:
+    - _compose_v2.rc != 0
+    - _compose_v1.rc | default(1) != 0
+
+- name: Select Docker Compose command
+  ansible.builtin.set_fact:
+    netbird_compose_cmd: "{{ ['docker', 'compose'] if _compose_v2.rc == 0 else ['docker-compose'] }}"
+
+- name: Check for OpenSSL
+  ansible.builtin.command: openssl version
+  register: _openssl
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Fail when OpenSSL is unavailable
+  ansible.builtin.fail:
+    msg: "OpenSSL is not installed or not in PATH. Install openssl before running this playbook."
+  when: _openssl.rc != 0

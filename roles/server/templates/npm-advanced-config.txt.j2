@@ -1,0 +1,45 @@
+# Advanced Configuration for Nginx Proxy Manager
+# Paste this into the "Advanced" tab of your Proxy Host configuration.
+#
+# Proxy Host domain:   {{ netbird_effective_domain }}
+# Forward Hostname/IP: {{ netbird_dashboard_upstream.split(':')[0] }}
+# Forward Port:        {{ netbird_dashboard_upstream.split(':')[1] }}
+#
+# IMPORTANT: Enable "HTTP/2 Support" in the SSL tab for gRPC to work!
+
+# Required for long-lived connections (gRPC and WebSocket)
+client_header_timeout 1d;
+client_body_timeout 1d;
+
+# WebSocket connections (relay, signal, management)
+location ~ ^/(relay|ws-proxy/) {
+    proxy_pass http://{{ netbird_server_upstream }};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 1d;
+}
+
+# Native gRPC (signal + management + proxy)
+location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService|management\.ProxyService)/ {
+    grpc_pass grpc://{{ netbird_server_upstream }};
+    # Overwrite rather than pass through: without this the client's own
+    # x-forwarded-for metadata reaches NetBird as the connection IP.
+    grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    grpc_read_timeout 1d;
+    grpc_send_timeout 1d;
+    grpc_socket_keepalive on;
+}
+
+# HTTP routes (API + OAuth2)
+location ~ ^/(api|oauth2)/ {
+    proxy_pass http://{{ netbird_server_upstream }};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}

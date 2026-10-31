@@ -1,0 +1,19 @@
+---
+# Creates the Docker network named by _network_name when it is missing.
+- name: Check Docker network {{ _network_name }}
+  ansible.builtin.command:
+    argv: [docker, network, inspect, "{{ _network_name }}"]
+  register: _network_inspect
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  become: "{{ create_netbird_user | bool }}"
+  become_user: "{{ netbird_run_as }}"
+
+- name: Create Docker network {{ _network_name }}
+  ansible.builtin.command:
+    argv: [docker, network, create, "{{ _network_name }}"]
+  changed_when: true
+  when: _network_inspect.rc != 0
+  become: "{{ create_netbird_user | bool }}"
+  become_user: "{{ netbird_run_as }}"

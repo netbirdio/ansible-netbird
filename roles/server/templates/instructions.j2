@@ -1,0 +1,16 @@
+Generated NetBird files in {{ netbird_project_path }}.
+{% if reverse_proxy_type == 'nginx' %}
+Configure nginx with {{ netbird_project_path }}/nginx-netbird.conf (set the certificate paths), then reload nginx.
+{% elif reverse_proxy_type == 'caddy' %}
+Add {{ netbird_project_path }}/caddyfile-netbird.txt to your Caddyfile, then reload Caddy.
+{% else %}
+Configure your reverse proxy for {{ netbird_effective_domain }}:
+  /relay*, /ws-proxy/* (WebSocket)        -> {{ netbird_server_upstream }}
+  /signalexchange.SignalExchange/*, /management.ManagementService/*, /management.ProxyService/* (gRPC, h2c) -> {{ netbird_server_upstream }}
+  /api/*, /oauth2/* (HTTP)                -> {{ netbird_server_upstream }}
+  /* (HTTP)                               -> {{ netbird_dashboard_upstream }}
+{% endif %}
+{% if netbird_effective_trusted_peers | length == 0 %}
+Set trusted_peers to the address your proxy connects to NetBird from, so clients cannot spoof their IP.
+{% endif %}
+Open {{ netbird_stun_port }}/udp to this host for STUN.

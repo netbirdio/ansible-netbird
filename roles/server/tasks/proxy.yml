@@ -1,0 +1,105 @@
+---
+- name: Read current proxy.env
+  ansible.builtin.slurp:
+    path: "{{ netbird_project_path }}/proxy.env"
+  register: _proxy_env_raw
+  become: "{{ create_netbird_user | bool }}"
+  no_log: true
+
+- name: Parse current proxy.env
+  vars:
+    _lines: "{{ _proxy_env_raw.content | b64decode | split('\n') | select('match', '^[A-Z_]+=') | list }}"
+    _env: "{{ dict(_lines | map('regex_replace', '^([A-Z_]+)=(.*)$', '\\1\n\\2') | map('split', '\n')) }}"
+  ansible.builtin.set_fact:
+    netbird_proxy_token: "{{ _env.NB_PROXY_TOKEN | default('') | regex_replace('^placeholder$', '') }}"
+    netbird_crowdsec_bouncer_key: "{{ _env.NB_PROXY_CROWDSEC_API_KEY | default('') }}"
+  no_log: true
+
+- name: Create proxy access token
+  ansible.builtin.command:
+    argv: >-
+      {{ netbird_compose_cmd + ['-p', netbird_compose_project, 'exec', '-T', 'netbird-server',
+         '/go/bin/netbird-server', 'admin', 'token', 'create', '--name', 'default-proxy',
+         '--config', '/etc/netbird/config.yaml'] }}
+    chdir: "{{ netbird_project_path }}"
+  register: _proxy_token_create
+  changed_when: true
+  become: "{{ create_netbird_user | bool }}"
+  become_user: "{{ netbird_run_as }}"
+  when: netbird_proxy_token | length == 0
+  no_log: true
+
+- name: Store proxy access token
+  vars:
+    _token: "{{ _proxy_token_create.stdout_lines | select('match', '^Token:') | map('split') | map('last') | first | default('') }}"
+  ansible.builtin.set_fact:
+    netbird_proxy_token: "{{ _token }}"
+  when: _proxy_token_create is not skipped
+  no_log: true
+
+- name: Fail when no proxy token was created
+  ansible.builtin.fail:
+    msg: >-
+      Failed to create the NetBird Proxy token. Check the netbird-server logs with
+      "docker compose logs --tail=50 netbird-server" in {{ netbird_project_path }}.
+  when: netbird_proxy_token | length == 0
+
+- name: Register CrowdSec bouncer
+  when:
+    - use_crowdsec | bool
+    - netbird_crowdsec_bouncer_key | length == 0
+  block:
+    - name: Wait for CrowdSec LAPI
+      ansible.builtin.command:
+        argv: "{{ netbird_compose_cmd + ['-p', netbird_compose_project, 'exec', '-T', 'crowdsec', 'cscli', 'lapi', 'status'] }}"
+        chdir: "{{ netbird_project_path }}"
+      register: _crowdsec_status
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: _crowdsec_status.rc == 0
+      become: "{{ create_netbird_user | bool }}"
+      become_user: "{{ netbird_run_as }}"
+
+    # A bouncer left over from an earlier run whose key was lost would make
+    # "bouncers add" fail.
+    - name: Remove stale CrowdSec bouncer
+      ansible.builtin.command:
+        argv: "{{ netbird_compose_cmd + ['-p', netbird_compose_project, 'exec', '-T', 'crowdsec', 'cscli', 'bouncers', 'delete', 'netbird-proxy'] }}"
+        chdir: "{{ netbird_project_path }}"
+      register: _crowdsec_bouncer_delete
+      changed_when: _crowdsec_bouncer_delete.rc == 0
+      failed_when: false
+      become: "{{ create_netbird_user | bool }}"
+      become_user: "{{ netbird_run_as }}"
+
+    - name: Add CrowdSec bouncer
+      ansible.builtin.command:
+        argv: "{{ netbird_compose_cmd + ['-p', netbird_compose_project, 'exec', '-T', 'crowdsec', 'cscli', 'bouncers', 'add', 'netbird-proxy', '-o', 'raw'] }}"
+        chdir: "{{ netbird_project_path }}"
+      register: _crowdsec_bouncer_add
+      changed_when: true
+      failed_when: _crowdsec_bouncer_add.rc != 0 or _crowdsec_bouncer_add.stdout | trim | length == 0
+      become: "{{ create_netbird_user | bool }}"
+      become_user: "{{ netbird_run_as }}"
+      no_log: true
+
+    - name: Store CrowdSec bouncer key
+      ansible.builtin.set_fact:
+        netbird_crowdsec_bouncer_key: "{{ _crowdsec_bouncer_add.stdout | trim }}"
+      no_log: true
+
+- name: Render proxy.env
+  ansible.builtin.template:
+    src: proxy.env.j2
+    dest: "{{ netbird_project_path }}/proxy.env"
+    owner: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    group: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    mode: "0600"
+  become: "{{ create_netbird_user | bool }}"
+  no_log: true
+
+- name: Start NetBird Proxy
+  ansible.builtin.include_tasks: compose.yml
+  vars:
+    _compose_args: [up, -d, proxy]

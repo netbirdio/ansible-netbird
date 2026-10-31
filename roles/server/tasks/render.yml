@@ -1,0 +1,53 @@
+---
+- name: Render config.yaml
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ netbird_project_path }}/config.yaml"
+    owner: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    group: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    mode: "0600"
+  become: "{{ create_netbird_user | bool }}"
+  register: _rendered_config
+  no_log: true
+
+- name: Render NetBird files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ netbird_project_path }}/{{ item.dest | default(item.src | regex_replace('\\.j2$', '')) }}"
+    owner: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    group: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    mode: "{{ item.mode }}"
+  become: "{{ create_netbird_user | bool }}"
+  loop:
+    - {src: dashboard.env.j2, mode: "0640"}
+    - {src: docker-compose.yml.j2, mode: "0644"}
+    - {src: traefik-dynamic.yaml.j2, mode: "0644", when: "{{ use_netbird_proxy | bool }}"}
+    - {src: nginx-netbird.conf.j2, mode: "0644", when: "{{ reverse_proxy_type == 'nginx' }}"}
+    - {src: npm-advanced-config.txt.j2, mode: "0644", when: "{{ reverse_proxy_type == 'npm' }}"}
+    - {src: caddyfile-netbird.txt.j2, mode: "0644", when: "{{ reverse_proxy_type == 'caddy' }}"}
+  loop_control:
+    label: "{{ item.src }}"
+  when: item.when | default(true) | bool
+
+- name: Create placeholder proxy.env
+  ansible.builtin.copy:
+    dest: "{{ netbird_project_path }}/proxy.env"
+    content: |
+      # Placeholder - will be updated with token after netbird-server starts
+      NB_PROXY_TOKEN=placeholder
+    force: false
+    owner: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    group: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    mode: "0600"
+  become: "{{ create_netbird_user | bool }}"
+  when: use_netbird_proxy | bool
+
+- name: Create CrowdSec config directory
+  ansible.builtin.file:
+    path: "{{ netbird_project_path }}/crowdsec"
+    state: directory
+    owner: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    group: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    mode: "0755"
+  become: "{{ create_netbird_user | bool }}"
+  when: use_crowdsec | bool

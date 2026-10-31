@@ -1,0 +1,45 @@
+# {{ ansible_managed }}
+# Combined NetBird Server Configuration
+
+server:
+  listenAddress: ":80"
+  exposedAddress: "{{ netbird_http_protocol }}://{{ netbird_effective_domain }}:{{ netbird_port }}"
+  stunPorts:
+    - {{ netbird_stun_port }}
+  metricsPort: 9090
+  healthcheckAddress: ":9000"
+  logLevel: "info"
+  logFile: "console"
+
+  authSecret: "{{ netbird_relay_auth_secret }}"
+  dataDir: "/var/lib/netbird"
+
+  auth:
+    issuer: "{{ netbird_http_protocol }}://{{ netbird_effective_domain }}/oauth2"
+    signKeyRefreshEnabled: true
+    sessionCookieEncryptionKey: "{{ netbird_session_cookie_encryption_key }}"
+    dashboardRedirectURIs:
+      - "{{ netbird_http_protocol }}://{{ netbird_effective_domain }}/nb-auth"
+      - "{{ netbird_http_protocol }}://{{ netbird_effective_domain }}/nb-silent-auth"
+    cliRedirectURIs:
+      - "http://localhost:53000/"
+
+  reverseProxy:
+{% if netbird_effective_trusted_http_proxies | length > 0 %}
+    trustedHTTPProxies:
+{% for prefix in netbird_effective_trusted_http_proxies %}
+      - "{{ prefix }}"
+{% endfor %}
+{% else %}
+    trustedHTTPProxies: []
+{% endif %}
+{% if netbird_effective_trusted_peers | length > 0 %}
+    trustedPeers:
+{% for prefix in netbird_effective_trusted_peers %}
+      - "{{ prefix }}"
+{% endfor %}
+{% endif %}
+
+  store:
+    engine: "sqlite"
+    encryptionKey: "{{ netbird_datastore_encryption_key }}"

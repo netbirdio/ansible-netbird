@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+services:
+  npm:
+    image: {{ npm_image }}
+    container_name: npm
+    restart: unless-stopped
+    ports:
+      - "{{ npm_http_port }}:80"
+      - "{{ npm_admin_port }}:81"
+      - "{{ npm_https_port }}:443"
+{% if npm_admin_identity | length > 0 and npm_admin_secret | length > 0 %}
+    environment:
+      INITIAL_ADMIN_EMAIL: {{ npm_admin_identity | to_json }}
+      INITIAL_ADMIN_PASSWORD: {{ npm_admin_secret | to_json }}
+{% endif %}
+    networks:
+      - {{ npm_network }}
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    logging:
+      driver: json-file
+      options:
+        max-size: "500m"
+        max-file: "2"
+
+networks:
+  {{ npm_network }}:
+    external: true
+
+volumes:
+  npm_data:
+  npm_letsencrypt:

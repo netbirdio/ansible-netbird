@@ -1,0 +1,10 @@
+---
+# Runs "docker compose <_compose_args>" in the NetBird project directory.
+- name: Run docker compose {{ _compose_args | join(' ') }}
+  ansible.builtin.command:
+    argv: "{{ netbird_compose_cmd + ['-p', netbird_compose_project] + _compose_args }}"
+    chdir: "{{ netbird_project_path }}"
+  register: _compose_result
+  changed_when: _compose_result.stderr is search('Creat|Recreat|Start|Restart|Pull')
+  become: "{{ create_netbird_user | bool }}"
+  become_user: "{{ netbird_run_as }}"

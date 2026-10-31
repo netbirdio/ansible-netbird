@@ -1,0 +1,142 @@
+---
+- name: Start Nginx Proxy Manager
+  ansible.builtin.command:
+    argv: "{{ netbird_compose_cmd + ['up', '-d'] }}"
+    chdir: "{{ npm_project_dir }}"
+  register: _npm_up
+  changed_when: _npm_up.stderr is search('Creat|Recreat|Start')
+  become: true
+  when:
+    - npm_install_config | bool
+    - npm_start | bool
+
+- name: Configure the Nginx Proxy Manager proxy host
+  when: npm_configure_proxy_host | bool
+  vars:
+    _npm_api: "{{ npm_api_url if npm_api_url | length > 0 else 'http://127.0.0.1:' ~ npm_admin_port ~ '/api' }}"
+    _npm_headers:
+      Authorization: "Bearer {{ _npm_token.json.token }}"
+  block:
+    - name: Wait for the Nginx Proxy Manager API
+      ansible.builtin.uri:
+        url: "{{ _npm_api }}"
+        status_code: [200, 404]
+      register: _npm_api_wait
+      retries: 60
+      delay: 2
+      until: _npm_api_wait.status in [200, 404]
+
+    - name: Get an Nginx Proxy Manager API token
+      ansible.builtin.uri:
+        url: "{{ _npm_api }}/tokens"
+        method: POST
+        body_format: json
+        body:
+          identity: "{{ npm_admin_identity }}"
+          secret: "{{ npm_admin_secret }}"
+          scope: user
+      register: _npm_token
+      no_log: true
+
+    - name: List Nginx Proxy Manager certificates
+      ansible.builtin.uri:
+        url: "{{ _npm_api }}/nginx/certificates"
+        headers: "{{ _npm_headers }}"
+      register: _npm_certificates
+      no_log: true
+      when:
+        - npm_proxy_host_ssl | bool
+        - npm_existing_certificate_id | int == 0
+
+    - name: Find an existing certificate for the domain
+      ansible.builtin.set_fact:
+        _npm_found_certificate_id: >-
+          {{ _npm_certificates.json | default([])
+             | selectattr('domain_names', 'contains', netbird_effective_domain)
+             | map(attribute='id') | first | default(0) }}
+      when: _npm_certificates is not skipped
+
+    - name: Request a Let's Encrypt certificate through Nginx Proxy Manager
+      ansible.builtin.uri:
+        url: "{{ _npm_api }}/nginx/certificates"
+        method: POST
+        headers: "{{ _npm_headers }}"
+        body_format: json
+        body:
+          provider: letsencrypt
+          domain_names: ["{{ netbird_effective_domain }}"]
+          meta:
+            dns_challenge: false
+            key_type: rsa
+        status_code: 201
+        timeout: 900
+      register: _npm_new_certificate
+      no_log: true
+      when:
+        - _npm_certificates is not skipped
+        - _npm_found_certificate_id | int == 0
+
+    - name: Select the proxy host certificate
+      ansible.builtin.set_fact:
+        _npm_certificate_id: >-
+          {{ 0 if not (npm_proxy_host_ssl | bool)
+             else npm_existing_certificate_id | int if npm_existing_certificate_id | int > 0
+             else _npm_found_certificate_id | int if _npm_found_certificate_id | default(0) | int > 0
+             else _npm_new_certificate.json.id | default(0) | int }}
+
+    - name: Require a certificate when SSL is enabled
+      ansible.builtin.assert:
+        that:
+          - _npm_certificate_id | int > 0
+        fail_msg: >-
+          SSL is enabled for the proxy host, but no certificate was found or created. Set
+          npm_existing_certificate_id or check the Nginx Proxy Manager Let's Encrypt logs.
+      when: npm_proxy_host_ssl | bool
+
+    - name: List Nginx Proxy Manager proxy hosts
+      ansible.builtin.uri:
+        url: "{{ _npm_api }}/nginx/proxy-hosts"
+        headers: "{{ _npm_headers }}"
+      register: _npm_proxy_hosts
+      no_log: true
+
+    - name: Build the proxy host definition
+      vars:
+        _ssl: "{{ npm_proxy_host_ssl | bool }}"
+      ansible.builtin.set_fact:
+        _npm_proxy_host_id: >-
+          {{ _npm_proxy_hosts.json | selectattr('domain_names', 'contains', netbird_effective_domain)
+             | map(attribute='id') | first | default(0) }}
+        _npm_proxy_host_body: >-
+          {{ {
+               'domain_names': [netbird_effective_domain],
+               'forward_scheme': 'http',
+               'forward_host': netbird_dashboard_upstream.split(':')[0],
+               'forward_port': netbird_dashboard_upstream.split(':')[1] | int,
+               'certificate_id': _npm_certificate_id | int,
+               'ssl_forced': _ssl and npm_ssl_forced | bool,
+               'hsts_enabled': _ssl and npm_hsts_enabled | bool,
+               'hsts_subdomains': _ssl and npm_hsts_subdomains | bool,
+               'http2_support': _ssl and npm_http2_support | bool,
+               'block_exploits': npm_block_exploits | bool,
+               'caching_enabled': false,
+               'allow_websocket_upgrade': npm_allow_websocket_upgrade | bool,
+               'access_list_id': 0,
+               'advanced_config': lookup('ansible.builtin.template', 'npm-advanced-config.txt.j2'),
+               'enabled': true,
+               'locations': [],
+               'meta': {}
+             } }}
+
+    - name: Create or update the Nginx Proxy Manager proxy host
+      ansible.builtin.uri:
+        url: "{{ _npm_api }}/nginx/proxy-hosts{{ '/' ~ _npm_proxy_host_id if _npm_proxy_host_id | int > 0 else '' }}"
+        method: "{{ 'PUT' if _npm_proxy_host_id | int > 0 else 'POST' }}"
+        headers: "{{ _npm_headers }}"
+        body_format: json
+        body: "{{ _npm_proxy_host_body }}"
+        status_code: "{{ [200] if _npm_proxy_host_id | int > 0 else [201] }}"
+        timeout: 120
+      register: _npm_proxy_host
+      changed_when: true
+      no_log: true

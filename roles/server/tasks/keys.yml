@@ -1,0 +1,67 @@
+---
+- name: Create NetBird project directory
+  ansible.builtin.file:
+    path: "{{ netbird_project_path }}"
+    state: directory
+    owner: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    group: "{{ netbird_user if create_netbird_user | bool else omit }}"
+    mode: "0750"
+  become: "{{ create_netbird_user | bool }}"
+
+- name: Check for an existing config.yaml
+  ansible.builtin.stat:
+    path: "{{ netbird_project_path }}/config.yaml"
+  register: _existing_config
+  become: "{{ create_netbird_user | bool }}"
+
+- name: Refuse to reinitialize an existing deployment
+  ansible.builtin.fail:
+    msg: >-
+      {{ netbird_project_path }}/config.yaml already exists. Set allow_existing_config=true to
+      converge the existing deployment; its secrets are kept. To start over instead, run
+      "docker compose down --volumes" in {{ netbird_project_path }} and remove the generated
+      files. That deletes all NetBird data.
+  when:
+    - _existing_config.stat.exists
+    - not (allow_existing_config | bool)
+
+- name: Read existing config.yaml
+  ansible.builtin.slurp:
+    path: "{{ netbird_project_path }}/config.yaml"
+  register: _existing_config_raw
+  become: "{{ create_netbird_user | bool }}"
+  when: _existing_config.stat.exists
+  no_log: true
+
+- name: Collect existing secrets
+  vars:
+    _server: "{{ (_existing_config_raw.content | b64decode | from_yaml).server | default({}) }}"
+  ansible.builtin.set_fact:
+    netbird_relay_auth_secret: "{{ _server.authSecret | default('') }}"
+    netbird_datastore_encryption_key: "{{ (_server.store | default({})).encryptionKey | default('') }}"
+    netbird_session_cookie_encryption_key: "{{ (_server.auth | default({})).sessionCookieEncryptionKey | default('') }}"
+  when: _existing_config.stat.exists
+  no_log: true
+
+# authSecret has its base64 padding stripped like the script does; the two
+# encryption keys must keep it because the server decodes them with
+# base64.StdEncoding.
+- name: Generate missing secrets
+  ansible.builtin.command: openssl rand -base64 32
+  register: _generated_secrets
+  changed_when: false
+  check_mode: false
+  loop:
+    - netbird_relay_auth_secret
+    - netbird_datastore_encryption_key
+    - netbird_session_cookie_encryption_key
+  when: lookup('ansible.builtin.vars', item, default='') | length == 0
+  no_log: true
+
+- name: Set generated secrets
+  ansible.builtin.set_fact:
+    "{{ item.item }}": "{{ item.stdout | trim | regex_replace('=', '') if item.item == 'netbird_relay_auth_secret' else item.stdout | trim }}"
+  loop: "{{ _generated_secrets.results | selectattr('stdout', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+  no_log: true

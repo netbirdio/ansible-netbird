@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - 'server - new role that deploys a self-hosted NetBird server the same way
+    as the upstream ``getting-started.sh`` script (combined server, dashboard,
+    built-in Traefik with optional NetBird Proxy and CrowdSec, or configuration
+    for an external reverse proxy). It can be re-run against a deployment it
+    created. The ``getting_started.yml`` playbook is a thin wrapper around it.'

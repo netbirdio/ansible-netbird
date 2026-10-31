@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+# NetBird Caddyfile Snippet
+#
+{% if netbird_external_proxy_network | length > 0 %}
+# This config uses container names since Caddy is on the same Docker network.
+# Add this block to your Caddyfile and reload Caddy.
+{% else %}
+# Add this block to your existing Caddyfile and reload Caddy
+{% endif %}
+{% if caddy_acme_email | length > 0 or caddy_acme_ca | length > 0 %}
+
+{
+{%   if caddy_acme_email | length > 0 %}
+    email {{ caddy_acme_email }}
+{%   endif %}
+{%   if caddy_acme_ca | length > 0 %}
+    acme_ca {{ caddy_acme_ca }}
+{%   endif %}
+}
+{% endif %}
+
+{{ netbird_effective_domain }} {
+    # Native gRPC (needs HTTP/2 cleartext to backend)
+    @grpc header Content-Type application/grpc*
+    reverse_proxy @grpc h2c://{{ netbird_server_upstream }}
+
+    # Combined server paths (relay, signal, management, OAuth2)
+    @backend path /relay* /ws-proxy/* /api/* /oauth2/*
+    reverse_proxy @backend {{ netbird_server_upstream }}
+
+    # Dashboard (everything else)
+    reverse_proxy /* {{ netbird_dashboard_upstream }}
+}

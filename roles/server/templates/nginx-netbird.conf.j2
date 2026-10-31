@@ -1,0 +1,104 @@
+# {{ ansible_managed }}
+# NetBird Nginx Configuration
+#
+{% if netbird_external_proxy_network | length > 0 %}
+# This config uses container names since Nginx is on the same Docker network.
+# Add this to your nginx.conf or include it from a separate file.
+{% else %}
+# 1. Update SSL certificate paths below
+# 2. Copy to your nginx config directory:
+#    Debian/Ubuntu: /etc/nginx/sites-available/netbird (then symlink to sites-enabled)
+#    RHEL/CentOS:   /etc/nginx/conf.d/netbird.conf
+# 3. Test and reload: nginx -t && systemctl reload nginx
+{% endif %}
+
+upstream netbird_dashboard {
+    server {{ netbird_dashboard_upstream }};
+    keepalive 10;
+}
+upstream netbird_server {
+    server {{ netbird_server_upstream }};
+}
+
+server {
+    listen 80;
+    server_name {{ netbird_effective_domain }};
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name {{ netbird_effective_domain }};
+
+{% if nginx_ssl_certificate | length > 0 %}
+    ssl_certificate {{ nginx_ssl_certificate }};
+    ssl_certificate_key {{ nginx_ssl_certificate_key }};
+{% else %}
+    # SSL/TLS Configuration
+    # Update these paths based on your certificate source:
+    #
+    # Let's Encrypt (certbot):
+    #   ssl_certificate /etc/letsencrypt/live/{{ netbird_effective_domain }}/fullchain.pem;
+    #   ssl_certificate_key /etc/letsencrypt/live/{{ netbird_effective_domain }}/privkey.pem;
+    #
+    # Let's Encrypt (acme.sh):
+    #   ssl_certificate /root/.acme.sh/{{ netbird_effective_domain }}/fullchain.cer;
+    #   ssl_certificate_key /root/.acme.sh/{{ netbird_effective_domain }}/{{ netbird_effective_domain }}.key;
+    #
+    # Custom certificates:
+    #   ssl_certificate /etc/ssl/certs/{{ netbird_effective_domain }}.crt;
+    #   ssl_certificate_key /etc/ssl/private/{{ netbird_effective_domain }}.key;
+    #
+    ssl_certificate /path/to/your/fullchain.pem;
+    ssl_certificate_key /path/to/your/privkey.pem;
+{% endif %}
+
+    # Recommended SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+
+    # Required for long-lived gRPC connections
+    client_header_timeout 1d;
+    client_body_timeout 1d;
+
+    # Common proxy headers
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Scheme $scheme;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+    grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # WebSocket connections (relay, signal, management)
+    location ~ ^/(relay|ws-proxy/) {
+        proxy_pass http://netbird_server;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 1d;
+    }
+
+    # Native gRPC (signal + management + proxy)
+    location ~ ^/(signalexchange\.SignalExchange|management\.ManagementService|management\.ProxyService)/ {
+        grpc_pass grpc://netbird_server;
+        grpc_read_timeout 1d;
+        grpc_send_timeout 1d;
+        grpc_socket_keepalive on;
+    }
+
+    # HTTP routes (API + OAuth2)
+    location ~ ^/(api|oauth2)/ {
+        proxy_pass http://netbird_server;
+        proxy_set_header Host $host;
+    }
+
+    # Dashboard (catch-all)
+    location / {
+        proxy_pass http://netbird_dashboard;
+    }
+}

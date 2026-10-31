@@ -1,0 +1,103 @@
+---
+- name: Install Nginx Proxy Manager
+  when:
+    - reverse_proxy_type == 'npm'
+    - npm_install_config | bool
+  block:
+    - name: Ensure Nginx Proxy Manager Docker network exists
+      ansible.builtin.include_tasks: docker_network.yml
+      vars:
+        _network_name: "{{ npm_network }}"
+
+    - name: Create Nginx Proxy Manager project directory
+      ansible.builtin.file:
+        path: "{{ npm_project_dir }}"
+        state: directory
+        mode: "0700"
+      become: true
+
+    - name: Check for existing Nginx Proxy Manager Compose file
+      ansible.builtin.stat:
+        path: "{{ npm_project_dir }}/docker-compose.yml"
+      register: _npm_compose
+      become: true
+
+    - name: Read existing Nginx Proxy Manager Compose file
+      ansible.builtin.slurp:
+        path: "{{ npm_project_dir }}/docker-compose.yml"
+      register: _npm_compose_content
+      become: true
+      when: _npm_compose.stat.exists
+
+    # Files this role wrote carry the ansible_managed header and are safe to
+    # converge; anything else belongs to the operator.
+    - name: Refuse to overwrite existing Nginx Proxy Manager Compose file
+      ansible.builtin.fail:
+        msg: >-
+          {{ npm_project_dir }}/docker-compose.yml already exists. Set
+          npm_overwrite_existing_config=true to replace it.
+      when:
+        - _npm_compose.stat.exists
+        - not (npm_overwrite_existing_config | bool)
+        - >-
+          (_npm_compose_content.content | b64decode).splitlines() | first | default('')
+          != '# ' ~ lookup('ansible.builtin.config', 'DEFAULT_MANAGED_STR')
+
+    - name: Render Nginx Proxy Manager Compose file
+      ansible.builtin.template:
+        src: npm-docker-compose.yml.j2
+        dest: "{{ npm_project_dir }}/docker-compose.yml"
+        mode: "0600"
+      become: true
+      no_log: true
+
+- name: Install external Traefik
+  when:
+    - reverse_proxy_type == 'external_traefik'
+    - external_traefik_install_config | bool
+  block:
+    - name: Ensure external Traefik Docker network exists
+      ansible.builtin.include_tasks: docker_network.yml
+      vars:
+        _network_name: "{{ traefik_external_network }}"
+
+    - name: Create external Traefik project directory
+      ansible.builtin.file:
+        path: "{{ external_traefik_project_dir }}"
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Check for existing external Traefik Compose file
+      ansible.builtin.stat:
+        path: "{{ external_traefik_project_dir }}/docker-compose.yml"
+      register: _external_traefik_compose
+      become: true
+
+    - name: Read existing external Traefik Compose file
+      ansible.builtin.slurp:
+        path: "{{ external_traefik_project_dir }}/docker-compose.yml"
+      register: _external_traefik_compose_content
+      become: true
+      when: _external_traefik_compose.stat.exists
+
+    # Files this role wrote carry the ansible_managed header and are safe to
+    # converge; anything else belongs to the operator.
+    - name: Refuse to overwrite existing external Traefik Compose file
+      ansible.builtin.fail:
+        msg: >-
+          {{ external_traefik_project_dir }}/docker-compose.yml already exists. Set
+          external_traefik_overwrite_existing_config=true to replace it.
+      when:
+        - _external_traefik_compose.stat.exists
+        - not (external_traefik_overwrite_existing_config | bool)
+        - >-
+          (_external_traefik_compose_content.content | b64decode).splitlines() | first | default('')
+          != '# ' ~ lookup('ansible.builtin.config', 'DEFAULT_MANAGED_STR')
+
+    - name: Render external Traefik Compose file
+      ansible.builtin.template:
+        src: external-traefik-docker-compose.yml.j2
+        dest: "{{ external_traefik_project_dir }}/docker-compose.yml"
+        mode: "0644"
+      become: true

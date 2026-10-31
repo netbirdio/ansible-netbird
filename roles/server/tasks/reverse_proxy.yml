@@ -1,0 +1,63 @@
+---
+- name: Install nginx config
+  when:
+    - reverse_proxy_type == 'nginx'
+    - nginx_install_config | bool
+  become: true
+  block:
+    - name: Install generated nginx config
+      ansible.builtin.template:
+        src: nginx-netbird.conf.j2
+        dest: "{{ nginx_config_path }}"
+        mode: "0644"
+      register: _nginx_config
+
+    - name: Enable generated nginx config
+      ansible.builtin.file:
+        src: "{{ nginx_config_path }}"
+        dest: "{{ nginx_enabled_config_path }}"
+        state: link
+        force: true
+      register: _nginx_enabled
+      when: nginx_enabled_config_path | length > 0
+
+    - name: Disable default nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      register: _nginx_default_site
+      when: nginx_disable_default_site | bool
+
+    - name: Test nginx config
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+      when:
+        - nginx_reload | bool
+        - _nginx_config is changed or _nginx_enabled is changed or _nginx_default_site is changed
+
+- name: Install Caddy config
+  when:
+    - reverse_proxy_type == 'caddy'
+    - caddy_install_config | bool
+  become: true
+  block:
+    - name: Install generated Caddyfile
+      ansible.builtin.template:
+        src: caddyfile-netbird.txt.j2
+        dest: "{{ caddy_config_path }}"
+        mode: "0644"
+        validate: caddy validate --adapter caddyfile --config %s
+      register: _caddy_config
+
+    - name: Reload Caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded
+      when:
+        - caddy_reload | bool
+        - _caddy_config is changed

@@ -1,0 +1,52 @@
+# {{ ansible_managed }}
+services:
+  traefik:
+    image: {{ traefik_image }}
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network={{ traefik_external_network }}"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.{{ traefik_entrypoint }}.address=:443"
+      - "--entrypoints.web.http.aliasHeadersStrategy=delete"
+      - "--entrypoints.{{ traefik_entrypoint }}.http.aliasHeadersStrategy=delete"
+      - "--entrypoints.{{ traefik_entrypoint }}.transport.respondingTimeouts.readTimeout=0"
+      - "--entrypoints.{{ traefik_entrypoint }}.transport.respondingTimeouts.writeTimeout=0"
+      - "--entrypoints.{{ traefik_entrypoint }}.transport.respondingTimeouts.idleTimeout=0"
+      - "--entrypoints.web.http.redirections.entrypoint.to={{ traefik_entrypoint }}"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.email={{ external_traefik_acme_email }}"
+      - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.tlschallenge=true"
+{% if traefik_acme_ca_server | length > 0 %}
+      - "--certificatesresolvers.{{ external_traefik_certresolver }}.acme.caserver={{ traefik_acme_ca_server }}"
+{% endif %}
+      - "--serverstransport.forwardingtimeouts.responseheadertimeout=0s"
+      - "--serverstransport.forwardingtimeouts.idleconntimeout=0s"
+{% if external_traefik_enable_dashboard | bool %}
+      - "--api.dashboard=true"
+{% endif %}
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - {{ traefik_external_network }}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    logging:
+      driver: json-file
+      options:
+        max-size: "500m"
+        max-file: "2"
+
+networks:
+  {{ traefik_external_network }}:
+    external: true
+
+volumes:
+  traefik_letsencrypt:

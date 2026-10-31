@@ -848,6 +848,19 @@ The collection includes a role for declarative configuration:
 
 See `defaults/main.yml` for all available role variables.
 
+## Deploying a NetBird Server
+
+The `server` role deploys a self-hosted NetBird server with Docker Compose, following the upstream [`getting-started.sh`](https://github.com/netbirdio/netbird/blob/main/infrastructure_files/getting-started.sh):
+
+```bash
+ansible-playbook -i inventory.ini community.ansible_netbird.getting_started \
+  -e netbird_domain=netbird.example.org \
+  -e reverse_proxy_type=builtin_traefik \
+  -e traefik_acme_email=admin@example.org
+```
+
+See [docs/getting_started.md](docs/getting_started.md) for the deployment modes and all variables.
+
 ## Examples
 
 The `examples/` directory contains complete playbook examples:

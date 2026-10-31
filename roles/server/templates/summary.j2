@@ -1,0 +1,30 @@
+NetBird files are in {{ netbird_project_path }}.
+{% if start_netbird_services | bool %}
+Dashboard: {{ netbird_http_protocol }}://{{ netbird_effective_domain }}
+{% else %}
+Services were not started (start_netbird_services=false). To start them, re-run with start_netbird_services=true and allow_existing_config=true{{ ' (the NetBird Proxy token is created during that run)' if use_netbird_proxy | bool else '' }}.
+{% endif %}
+{% if use_builtin_traefik | bool %}
+Open these ports: 80/tcp and 443/tcp (HTTP and HTTPS), {{ netbird_stun_port }}/udp (STUN){{ ', 51820/udp (WireGuard, optional, for P2P proxy connections)' if use_netbird_proxy | bool else '' }}.
+{% else %}
+Open {{ netbird_stun_port }}/udp (STUN) to this host, plus whatever your reverse proxy listens on.
+{% endif %}
+{% if use_netbird_proxy | bool %}
+NetBird Proxy is enabled{{ ' in private agent-network mode' if netbird_agent_network | bool else '' }}{{ ' with CrowdSec' if use_crowdsec | bool else '' }}.
+{% if not netbird_agent_network | bool %}
+Point a wildcard DNS record such as *.{{ netbird_effective_domain }} at this host to expose services through it.
+{% endif %}
+{% endif %}
+{% if reverse_proxy_type == 'external_traefik' and not (external_traefik_install_config | bool) %}
+Traefik must be running on Docker network {{ traefik_external_network }} with entrypoint {{ traefik_entrypoint }}.
+{% endif %}
+{% if reverse_proxy_type == 'npm' and not (npm_configure_proxy_host | bool) %}
+Create a Proxy Host in Nginx Proxy Manager using {{ netbird_project_path }}/npm-advanced-config.txt.
+{% endif %}
+{% if netbird_agent_network | bool %}
+The public domain is only used to set up secure connections. Your APIs and agent services stay private.
+See https://docs.netbird.io/agent-network
+{% else %}
+This setup is ideal for homelabs and smaller organization deployments. For high availability, see
+https://docs.netbird.io/scaling-your-self-hosted-deployment or https://netbird.io/pricing#on-prem
+{% endif %}

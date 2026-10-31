@@ -1,0 +1,21 @@
+---
+# Playbook: Deploy a self-hosted NetBird server
+#
+# Thin wrapper around the community.ansible_netbird.server role, which mirrors
+# infrastructure_files/getting-started.sh from netbirdio/netbird. Every prompt
+# in the script is a role variable; see docs/getting_started.md.
+#
+# Built-in Traefik with Let's Encrypt:
+#   ansible-playbook -i inventory.ini community.ansible_netbird.getting_started \
+#     -e netbird_domain=netbird.example.org \
+#     -e traefik_acme_email=admin@example.org
+#
+# Optional variables:
+#   - target_hosts: Host or group to run on (default: netbird)
+
+- name: Deploy NetBird self-hosted
+  hosts: "{{ target_hosts | default('netbird') }}"
+  gather_facts: true
+  become: false
+  roles:
+    - role: community.ansible_netbird.server

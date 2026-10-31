@@ -1,0 +1,78 @@
+---
+- name: Fail when the host IPv4 address is unknown
+  ansible.builtin.fail:
+    msg: "Could not determine the host's main IPv4 address from Ansible facts (ansible_default_ipv4)."
+  when:
+    - netbird_domain == 'use-ip'
+    - ansible_facts['default_ipv4']['address'] | default('') | length == 0
+
+- name: Set deployment facts
+  vars:
+    _uses_ip: "{{ netbird_domain == 'use-ip' }}"
+    _builtin: "{{ reverse_proxy_type == 'builtin_traefik' }}"
+    _proxy: "{{ _builtin and (netbird_agent_network | bool or builtin_traefik_enable_proxy | bool) }}"
+    _external_network: >-
+      {{ external_proxy_network if external_proxy_network | length > 0
+         else npm_network if reverse_proxy_type == 'npm' and npm_install_config | bool
+         else '' }}
+  ansible.builtin.set_fact:
+    netbird_effective_domain: "{{ ansible_facts['default_ipv4']['address'] if _uses_ip else netbird_domain }}"
+    netbird_http_protocol: "{{ 'http' if _uses_ip else 'https' }}"
+    netbird_port: "{{ 80 if _uses_ip else 443 }}"
+    use_builtin_traefik: "{{ _builtin }}"
+    use_external_traefik: "{{ reverse_proxy_type == 'external_traefik' }}"
+    use_exposed_ports: "{{ reverse_proxy_type in ['nginx', 'npm', 'caddy', 'manual'] }}"
+    use_netbird_proxy: "{{ _proxy }}"
+    use_crowdsec: "{{ _proxy and not (netbird_agent_network | bool) and builtin_traefik_enable_crowdsec | bool }}"
+    netbird_external_proxy_network: "{{ _external_network if reverse_proxy_type in ['nginx', 'npm', 'caddy'] else '' }}"
+    netbird_bind_address: "{{ '127.0.0.1' if bind_localhost_only | bool else '0.0.0.0' }}"
+    netbird_effective_certresolver: >-
+      {{ traefik_certresolver if traefik_certresolver | length > 0
+         else external_traefik_certresolver if reverse_proxy_type == 'external_traefik' and external_traefik_install_config | bool
+         else '' }}
+    netbird_effective_trusted_peers: >-
+      {{ trusted_peers if trusted_peers | length > 0
+         else [traefik_ip ~ '/32'] if _builtin
+         else [] }}
+    netbird_effective_trusted_http_proxies: >-
+      {{ trusted_http_proxies if trusted_http_proxies | length > 0
+         else [traefik_ip ~ '/32'] if _builtin
+         else [] }}
+    netbird_run_as: "{{ netbird_user if create_netbird_user | bool else ansible_facts['user_id'] }}"
+
+- name: Set upstream addresses for external proxies
+  ansible.builtin.set_fact:
+    netbird_dashboard_upstream: >-
+      {{ 'netbird-dashboard:80' if netbird_external_proxy_network | length > 0
+         else '127.0.0.1:' ~ dashboard_host_port }}
+    netbird_server_upstream: >-
+      {{ 'netbird-server:80' if netbird_external_proxy_network | length > 0
+         else '127.0.0.1:' ~ management_host_port }}
+
+- name: Check that the domain resolves
+  ansible.builtin.command:
+    argv: [getent, hosts, "{{ netbird_domain }}"]
+  register: _netbird_domain_lookup
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: netbird_domain != 'use-ip'
+
+- name: Warn when the domain does not resolve
+  ansible.builtin.debug:
+    msg: >-
+      Warning: {{ netbird_domain }} does not resolve via DNS from this host. TLS certificate
+      issuance and client connections will fail until it does.
+  when:
+    - netbird_domain != 'use-ip'
+    - _netbird_domain_lookup.rc | default(0) != 0
+
+- name: Warn when trusted_peers is empty behind an external proxy
+  ansible.builtin.debug:
+    msg: >-
+      Warning: reverseProxy.trustedPeers is unset, so all IPv4 and IPv6 sources are trusted to
+      provide forwarded client-IP headers. Set trusted_peers to your proxy's address
+      (for example ['172.20.0.5/32']) and re-run.
+  when:
+    - not (use_builtin_traefik | bool)
+    - netbird_effective_trusted_peers | length == 0

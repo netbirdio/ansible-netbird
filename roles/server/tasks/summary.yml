@@ -1,0 +1,4 @@
+---
+- name: Show deployment summary
+  ansible.builtin.debug:
+    msg: "{{ lookup('ansible.builtin.template', 'summary.j2').splitlines() }}"

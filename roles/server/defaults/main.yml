@@ -1,0 +1,125 @@
+---
+# Mirrors infrastructure_files/getting-started.sh from netbirdio/netbird.
+# See docs/getting_started.md for what each option does.
+
+# Public FQDN of the deployment, or "use-ip" for a plain HTTP test install
+# on the host's IPv4 address (manual reverse proxy only).
+netbird_domain: ""
+
+# builtin_traefik, external_traefik, nginx, npm, caddy or manual
+# (getting-started.sh options 0 to 5).
+reverse_proxy_type: builtin_traefik
+
+# Agent-network preset (NETBIRD_AGENT_NETWORK=true). Forces built-in Traefik
+# with the NetBird Proxy in private mode, an agent-network-only dashboard and
+# no CrowdSec.
+netbird_agent_network: false
+
+# Built-in Traefik
+traefik_acme_email: ""
+# Empty uses Let's Encrypt production. Point at a staging or private ACME
+# directory for tests.
+traefik_acme_ca_server: ""
+builtin_traefik_enable_proxy: false
+builtin_traefik_enable_crowdsec: false
+# Restrict the NetBird Proxy to subdomains of netbird_domain. Upstream leaves
+# this off so services can also use custom domains.
+netbird_proxy_require_subdomain: false
+
+# External Traefik
+traefik_external_network: ""
+traefik_entrypoint: websecure
+traefik_certresolver: ""
+external_traefik_install_config: false
+external_traefik_overwrite_existing_config: false
+external_traefik_project_dir: /opt/traefik
+external_traefik_acme_email: ""
+external_traefik_certresolver: letsencrypt
+external_traefik_start: true
+external_traefik_enable_dashboard: false
+
+# External proxies (nginx, npm, caddy, manual)
+bind_localhost_only: true
+external_proxy_network: ""
+dashboard_host_port: 8080
+management_host_port: 8081
+
+# Forwarded client IP handling (server.reverseProxy in config.yaml).
+# trusted_peers lists the addresses management accepts X-Forwarded-For from.
+# Built-in Traefik defaults to its own address. For every other mode, leave it
+# empty only if you accept that any source can spoof its client IP.
+trusted_peers: []
+trusted_http_proxies: []
+
+# Nginx on the host
+nginx_install_config: false
+nginx_ssl_certificate: ""
+nginx_ssl_certificate_key: ""
+nginx_config_path: /etc/nginx/sites-available/netbird
+nginx_enabled_config_path: /etc/nginx/sites-enabled/netbird
+nginx_disable_default_site: false
+nginx_reload: true
+
+# Caddy on the host
+caddy_install_config: false
+caddy_config_path: /etc/caddy/Caddyfile
+caddy_reload: true
+caddy_acme_email: ""
+caddy_acme_ca: ""
+
+# Nginx Proxy Manager
+npm_install_config: false
+npm_overwrite_existing_config: false
+npm_project_dir: /opt/npm
+npm_image: jc21/nginx-proxy-manager:latest
+npm_network: npm
+npm_http_port: 80
+npm_https_port: 443
+npm_admin_port: 81
+npm_start: true
+npm_configure_proxy_host: false
+npm_admin_identity: ""
+npm_admin_secret: ""
+npm_api_url: ""
+npm_proxy_host_ssl: true
+npm_ssl_forced: true
+npm_http2_support: true
+npm_hsts_enabled: false
+npm_hsts_subdomains: false
+npm_block_exploits: true
+npm_allow_websocket_upgrade: true
+npm_existing_certificate_id: 0
+
+# Deployment
+# Empty means "netbird" in the home directory of the user that runs Compose.
+netbird_project_dir: ""
+start_netbird_services: true
+# Re-run against an existing deployment. Secrets already in config.yaml are
+# kept, so this converges the generated files instead of reinitializing.
+allow_existing_config: false
+# Pause for confirmation before starting containers behind nginx, caddy or a
+# manual proxy, like the script does on a terminal.
+wait_for_reverse_proxy: true
+# Validate TLS certificates in the public endpoint health check.
+netbird_validate_certs: true
+health_check_retries: 60
+health_check_delay: 2
+
+# Create a dedicated user that owns the deployment and runs Docker Compose.
+create_netbird_user: false
+netbird_user: netbird
+
+# Images
+dashboard_image: netbirdio/dashboard:latest
+netbird_server_image: netbirdio/netbird-server:latest
+netbird_proxy_image: netbirdio/reverse-proxy:latest
+# Must be a numeric tag of v3.7.13 or newer (aliasHeadersStrategy).
+traefik_image: traefik:v3.7.14
+crowdsec_image: crowdsecurity/crowdsec:v1.8.1
+
+# Internal values, rarely changed
+netbird_stun_port: 3478
+traefik_ip: 172.30.0.10
+traefik_subnet: 172.30.0.0/24
+traefik_gateway: 172.30.0.1
+docker_socket_path: /var/run/docker.sock

@@ -1,0 +1,84 @@
+---
+- name: Decide whether to wait for the operator's reverse proxy
+  ansible.builtin.set_fact:
+    _wait_for_operator_proxy: >-
+      {{ reverse_proxy_type in ['nginx', 'caddy', 'manual']
+         and not (reverse_proxy_type == 'nginx' and nginx_install_config | bool)
+         and not (reverse_proxy_type == 'caddy' and caddy_install_config | bool) }}
+
+- name: Show reverse proxy instructions
+  ansible.builtin.debug:
+    msg: "{{ lookup('ansible.builtin.template', 'instructions.j2').splitlines() }}"
+  when: _wait_for_operator_proxy | bool
+
+- name: Wait for the reverse proxy to be configured
+  ansible.builtin.pause:
+    prompt: "Press Enter when your reverse proxy is configured (or Ctrl+C, then A, to abort)"
+  when:
+    - _wait_for_operator_proxy | bool
+    - wait_for_reverse_proxy | bool
+
+- name: Start external Traefik
+  ansible.builtin.command:
+    argv: "{{ netbird_compose_cmd + ['up', '-d'] }}"
+    chdir: "{{ external_traefik_project_dir }}"
+  register: _external_traefik_up
+  changed_when: _external_traefik_up.stderr is search('Creat|Recreat|Start')
+  become: true
+  when:
+    - reverse_proxy_type == 'external_traefik'
+    - external_traefik_install_config | bool
+    - external_traefik_start | bool
+
+# With the NetBird Proxy enabled the script starts everything except the proxy
+# first, because the proxy needs a token that only a running server can issue.
+- name: Start NetBird services
+  ansible.builtin.include_tasks: compose.yml
+  vars:
+    _compose_args: >-
+      {{ ['up', '-d', '--remove-orphans']
+         + ((['traefik', 'dashboard', 'netbird-server'] + (['crowdsec'] if use_crowdsec | bool else []))
+            if use_netbird_proxy | bool else []) }}
+
+# config.yaml is bind-mounted, so Compose does not recreate the container when
+# only its content changes.
+- name: Restart netbird-server to load the changed config.yaml
+  ansible.builtin.include_tasks: compose.yml
+  vars:
+    _compose_args: [restart, netbird-server]
+  when:
+    - _existing_config.stat.exists
+    - _rendered_config is changed
+
+- name: Configure Nginx Proxy Manager
+  ansible.builtin.include_tasks: npm.yml
+  when: reverse_proxy_type == 'npm'
+
+- name: Wait for NetBird server on the direct endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ management_host_port }}/oauth2/.well-known/openid-configuration"
+    status_code: 200
+  register: _direct_health
+  retries: "{{ health_check_retries }}"
+  delay: "{{ health_check_delay }}"
+  until: _direct_health.status == 200
+  when: use_exposed_ports | bool
+
+- name: Wait for NetBird server through the reverse proxy
+  ansible.builtin.uri:
+    url: "{{ netbird_http_protocol }}://{{ netbird_effective_domain }}/oauth2/.well-known/openid-configuration"
+    status_code: 200
+    validate_certs: "{{ netbird_validate_certs | bool }}"
+  register: _public_health
+  retries: "{{ health_check_retries }}"
+  delay: "{{ health_check_delay }}"
+  until: _public_health.status == 200
+  when: >-
+    use_builtin_traefik | bool or use_external_traefik | bool
+    or (reverse_proxy_type == 'nginx' and nginx_install_config | bool)
+    or (reverse_proxy_type == 'caddy' and caddy_install_config | bool)
+    or (reverse_proxy_type == 'npm' and npm_configure_proxy_host | bool)
+
+- name: Configure the NetBird Proxy
+  ansible.builtin.include_tasks: proxy.yml
+  when: use_netbird_proxy | bool
