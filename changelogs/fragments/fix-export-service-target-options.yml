@@ -9,4 +9,5 @@ bugfixes:
     A boolean option the API omits reads as false, and one a config leaves out
     reads as the ``netbird_service`` default, so a config without
     ``direct_upstream`` now previews the switch to direct dialing instead of
-    reporting no change.
+    reporting no change. A target without ``enabled`` reads as enabled, so a
+    config that would re-enable a disabled target previews that too.

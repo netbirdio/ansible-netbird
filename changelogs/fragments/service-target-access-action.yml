@@ -7,8 +7,9 @@ minor_changes:
     ``block`` from a server that does not support it fails; a new service is
     created with its targets disabled and they are enabled only once the
     server reports the requested actions, so no route is served without them.
-    ``bypass`` or ``block`` on a TCP, UDP or TLS service, or on enabled targets
-    sharing a path, is refused before anything is written.
+    ``bypass`` or ``block`` on a TCP, UDP or TLS service or on enabled targets
+    sharing a path, and ``bypass`` on a private service, are refused before
+    anything is written.
     The actions are enforced by the reverse proxy, so
     every proxy in the service's cluster must be upgraded too
     (https://github.com/netbirdio/ansible-netbird/issues/70).
@@ -18,8 +19,10 @@ minor_changes:
 bugfixes:
   - netbird_service - removing or re-pathing a target whose access action is
     ``bypass`` or ``block`` failed with ``include access_action when removing or
-    changing controlled target location``. Every target is now sent with an
-    explicit action, so the change applies.
+    changing controlled target location``. Such a change now sends every
+    target's action explicitly, so it applies. Other updates leave the actions
+    out and the server keeps them, so an action changed in the dashboard while
+    the task runs is not overwritten.
   - preview - services with several path-routed targets on the same resource and
     port were reported as changed on an unedited export, because the targets
     were matched by resource and port only. Targets are now matched by path and
