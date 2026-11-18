@@ -339,8 +339,8 @@ netbird_service_domains:
   `target_id` takes the network resource ID; copy it from an export.
 - `direct_upstream` defaults to `true` (dial the backend from the proxy's host
   network). Set it to `false` for targets the proxy reaches through the
-  tunnel; some proxy clusters, NetBird Cloud's among them, refuse `true` on
-  public services. The export always writes it.
+  tunnel. A proxy cluster that is not in private mode refuses `true`. The
+  export always writes it.
 - `access_action` (`inherit`, `bypass` or `block`) sets authentication per
   path on HTTP services. It needs NetBird management v0.81.0 or later, with
   every reverse proxy in the service's cluster upgraded. A target without
@@ -350,8 +350,9 @@ netbird_service_domains:
   on. Applying an older export therefore reverts actions changed in the
   dashboard since it was taken.
 - Password and PIN secrets are never returned by the API, so the export leaves
-  `password_auth`/`pin_auth` out with a comment. Re-add them before applying;
-  leaving them out keeps the service's existing settings.
+  `password_auth`/`pin_auth` out with a comment. Leaving them out keeps the
+  service's existing password and PIN settings; add them back only to change
+  them.
 
 > **Upgrading from 1.4.x:** re-export after upgrading. Exports from earlier
 > versions leave out `direct_upstream` when it is false, so applying them

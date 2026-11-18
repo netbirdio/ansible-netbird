@@ -6,7 +6,8 @@ minor_changes:
     set it, ``inherit`` included, to enforce it. Requesting ``bypass`` or
     ``block`` from a server that does not support it fails; a new service is
     created with its targets disabled and they are enabled only once the
-    server reports the requested actions, so no route is served without them.
+    server reports the requested actions, so a server that would drop them
+    never serves the new routes.
     ``bypass`` or ``block`` on a TCP, UDP or TLS service or on enabled targets
     sharing a path, and ``bypass`` on a private service, are refused before
     anything is written.
