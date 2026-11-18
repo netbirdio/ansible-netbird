@@ -288,5 +288,200 @@ class TestFullRoundTrip:
         assert 'app.example.com' in result['changed']
 
 
+def api_path_target(path, access_action='inherit'):
+    """A path-routed target as the API returns it: one resource and port,
+    many paths, which is how per-target access actions are set up."""
+    return {
+        'target_id': 'res-1',
+        'target_type': 'host',
+        'host': '10.0.0.1',
+        'port': 8080,
+        'path': path,
+        'access_action': access_action,
+        'protocol': 'http',
+        'enabled': True,
+        'options': {'direct_upstream': True, 'skip_tls_verify': False,
+                    'path_rewrite': 'preserve', 'proxy_protocol': False},
+    }
+
+
+def exported_path_target(path, access_action=None):
+    """The same target in config form: path omitted for ``/``, and
+    access_action only when given (the export states it for every target;
+    a hand-written config may leave it out)."""
+    target = {
+        'host': '10.0.0.1',
+        'port': 8080,
+        'protocol': 'http',
+        'target_id': 'res-1',
+        'target_type': 'host',
+        'enabled': True,
+        'direct_upstream': True,
+    }
+    if path != '/':
+        target['path'] = path
+    if access_action:
+        target['access_action'] = access_action
+    return target
+
+
+class TestPathRoutedTargets:
+    """Targets that share a resource and port were matched to a single
+    desired target, so the keys one declared (path, access_action) were
+    compared on the others and an unedited export read as changed."""
+
+    def _current(self):
+        return api_service(targets=[
+            api_path_target('/'),
+            api_path_target('/public/', 'bypass'),
+            api_path_target('/admin', 'block'),
+        ])
+
+    def _exported(self, admin_action='block'):
+        return exported_service(targets=[
+            exported_path_target('/'),
+            exported_path_target('/public/', 'bypass'),
+            exported_path_target('/admin', admin_action),
+        ])
+
+    def test_freshly_exported_multi_path_service_reports_no_changes(self):
+        """The regression."""
+        assert _compare_service(self._current(), self._exported(),
+                                group_ids=GROUP_IDS) == []
+
+    def test_an_export_that_states_inherit_previews_clean(self):
+        """The export writes the action for every target, inherit included."""
+        desired = exported_service(targets=[
+            exported_path_target('/', 'inherit'),
+            exported_path_target('/public/', 'bypass'),
+            exported_path_target('/admin', 'block'),
+        ])
+        assert _compare_service(self._current(), desired, group_ids=GROUP_IDS) == []
+
+    def test_an_inherit_drift_is_detected(self):
+        """A path made public in the dashboard after the export shows up."""
+        current = self._current()
+        desired = exported_service(targets=[
+            exported_path_target('/', 'inherit'),
+            exported_path_target('/public/', 'bypass'),
+            exported_path_target('/admin', 'block'),
+        ])
+        current['targets'][0]['access_action'] = 'bypass'
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_inherit_against_a_server_without_the_field_is_not_a_change(self):
+        """Such a server applies the service's authentication everywhere,
+        which is what inherit means."""
+        target = api_path_target('/admin')
+        del target['access_action']
+        current = api_service(targets=[target])
+        desired = exported_service(targets=[exported_path_target('/admin', 'inherit')])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_subnet_targets_on_one_resource_pair_by_host(self):
+        def subnet(host, action):
+            t = api_path_target('/', action)
+            t.update(target_type='subnet', host=host)
+            return t
+
+        def exported(host, action):
+            t = exported_path_target('/', action)
+            t.update(target_type='subnet', host=host)
+            return t
+        # One target states its action, the other (hand-written) does not;
+        # paired with the wrong one, the stated action leaks onto it.
+        current = api_service(targets=[subnet('10.0.0.1', 'block'), subnet('10.0.0.2', 'inherit')])
+        desired = exported_service(targets=[exported('10.0.0.2', None), exported('10.0.0.1', 'block')])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_an_enabled_target_and_its_standby_pair_one_to_one(self):
+        """They share every key field; a change to only the enabled one must
+        not be hidden by the standby, nor an unchanged pair reported."""
+        def api(action, enabled):
+            return dict(api_path_target('/admin', action), enabled=enabled)
+
+        def cfg(action, enabled):
+            return dict(exported_path_target('/admin', action), enabled=enabled)
+        current = api_service(targets=[api('block', True), api('inherit', False)])
+        same = exported_service(targets=[cfg(None, False), cfg('block', True)])
+        assert _compare_service(current, same, group_ids=GROUP_IDS) == []
+        edited = exported_service(targets=[cfg('inherit', False), cfg('bypass', True)])
+        diffs = _compare_service(current, edited, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_standbys_sharing_a_key_pair_by_protocol_not_order(self):
+        def api(protocol, action):
+            return dict(api_path_target('/admin', action), enabled=False, protocol=protocol)
+
+        def cfg(protocol, action):
+            return dict(exported_path_target('/admin', action), enabled=False, protocol=protocol)
+        current = api_service(targets=[api('http', 'inherit'), api('https', 'block')])
+        desired = exported_service(targets=[cfg('https', 'block'), cfg('http', None)])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_a_config_target_without_protocol_ranks_as_http(self):
+        def api(protocol, action):
+            return dict(api_path_target('/admin', action), enabled=False, protocol=protocol)
+        http = dict(exported_path_target('/admin', None), enabled=False)
+        del http['protocol']
+        https = dict(exported_path_target('/admin', 'block'), enabled=False, protocol='https')
+        current = api_service(targets=[api('http', 'inherit'), api('https', 'block')])
+        desired = exported_service(targets=[https, http])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_a_null_action_is_unset(self):
+        """The module keeps the current action for a null one."""
+        current = api_service(targets=[api_path_target('/admin', 'block')])
+        desired = exported_service(targets=[dict(exported_path_target('/admin'), access_action=None)])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_standbys_differing_in_a_declared_option_pair_by_it(self):
+        def api(skip):
+            t = dict(api_path_target('/admin', 'block'), enabled=False, protocol='https')
+            t['options'] = dict(t['options'], skip_tls_verify=skip)
+            return t
+
+        def cfg(skip):
+            t = dict(exported_path_target('/admin', 'block'), enabled=False, protocol='https')
+            if skip:
+                t['skip_tls_verify'] = True
+            return t
+        current = api_service(targets=[api(False), api(True)])
+        assert _compare_service(current, exported_service(targets=[cfg(True), cfg(False)]),
+                                group_ids=GROUP_IDS) == []
+        assert _compare_service(current, exported_service(targets=[cfg(False), cfg(True)]),
+                                group_ids=GROUP_IDS) == []
+        edited = exported_service(targets=[cfg(True), cfg(True)])
+        assert any('targets' in d for d in _compare_service(current, edited, group_ids=GROUP_IDS))
+
+    def test_a_root_path_the_api_leaves_out_matches_path_slash(self):
+        target = api_path_target('/')
+        del target['path']
+        current = api_service(targets=[target])
+        desired = exported_service(targets=[dict(exported_path_target('/'), path='/')])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_an_omitted_path_is_previewed_as_moving_the_target_to_root(self):
+        """The module applies a target without ``path`` at ``/``, so against a
+        target at ``/api`` that is a change, even with every other field the
+        same."""
+        current = api_service(targets=[api_path_target('/api')])
+        desired = exported_service(targets=[exported_path_target('/')])
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_an_edited_access_action_is_detected(self):
+        diffs = _compare_service(self._current(), self._exported('bypass'),
+                                 group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_an_undeclared_access_action_is_not_reported(self):
+        """Omitting it keeps the current action on apply, so preview must not
+        claim it will be reset."""
+        assert _compare_service(self._current(), self._exported(None),
+                                group_ids=GROUP_IDS) == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

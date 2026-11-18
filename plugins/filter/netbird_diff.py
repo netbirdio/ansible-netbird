@@ -275,6 +275,48 @@ def _flatten_target(target):
     return flat
 
 
+def _target_match_key(target):
+    """Pair a desired target with its API counterpart.
+
+    The export omits ``path`` when it is ``/``, and the API treats an unset
+    path as ``/``, so both normalize to it. A subnet target's host is part of
+    its identity (the API returns it as stored), as in ``netbird_service``;
+    other types have their host rewritten by the API on read.
+    """
+    host = target.get('host') if (target.get('target_type') or 'subnet') == 'subnet' else None
+    return (target.get('target_id'), host, target.get('port'),
+            target.get('path') or '/')
+
+
+def _take_match(candidates, target):
+    """Pop the desired target matching ``target``, same enabled state first.
+
+    A path may hold an enabled target and a disabled standby that share every
+    key field; pairing them one-to-one keeps one from hiding the other.
+    """
+    pool = candidates.get(_target_match_key(target))
+    if not pool:
+        return None
+    enabled = bool(target.get('enabled', True))
+    protocol = target.get('protocol') or 'http'
+    action = target.get('access_action') or 'inherit'
+
+    # Same enabled state, protocol (module default http) and action first,
+    # then the fewest other differences among the fields the config states:
+    # standbys sharing a key are told apart by what they are, not by their
+    # order in the list. An action only counts where the config states one.
+    def rank(t):
+        others = sum(1 for k, v in t.items()
+                     if k not in ('enabled', 'protocol', 'access_action') and target.get(k) != v)
+        return (bool(t.get('enabled', True)) != enabled,
+                (t.get('protocol') or 'http') != protocol,
+                'access_action' in t and t['access_action'] != action,
+                others)
+    match = min(pool, key=rank)
+    pool.remove(match)
+    return match
+
+
 def _resolve_group_list(names, group_ids):
     """Resolve a list of group names to IDs using group_ids map.
 
@@ -322,19 +364,37 @@ def _compare_service(current, desired, group_ids=None):
     # targets: flatten nested options to top-level keys, then filter each
     # API target to only the keys its matched desired target declares (the
     # export omits defaults like path='/' and path_rewrite='preserve', and
-    # different targets may declare different optional keys)
+    # different targets may declare different optional keys). The path is part
+    # of the match: path-routed targets usually share one resource and port,
+    # and without it they collapse onto a single desired target, so one
+    # target's declared keys (path, access_action) leak onto the others.
     if 'targets' in des:
         des_flat = [_flatten_target(t)
                     for t in (desired.get('targets') or [])]
-        des_by_key = {(t.get('target_id'), t.get('port')): t
-                      for t in des_flat}
+        des_by_key = {}
+        for t in des_flat:
+            # access_action: null is unset for the module, which then keeps the
+            # current action, so it is not a declaration to compare.
+            if 'access_action' in t and t['access_action'] is None:
+                del t['access_action']
+            if 'path' in t:
+                t['path'] = t['path'] or '/'
+            des_by_key.setdefault(_target_match_key(t), []).append(t)
         des['targets'] = _normalize(des_flat)
         if 'targets' in cur:
             filtered_cur_targets = []
             for t in (current.get('targets') or []):
                 flat = _flatten_target(t)
-                match = des_by_key.get((flat.get('target_id'), flat.get('port')))
+                match = _take_match(des_by_key, flat)
                 if match is not None:
+                    # A server without per-target actions applies the
+                    # service's authentication everywhere, which is what
+                    # inherit means.
+                    if 'access_action' in match:
+                        flat.setdefault('access_action', 'inherit')
+                    # The API may leave out a root path the config states.
+                    if 'path' in match:
+                        flat['path'] = flat.get('path') or '/'
                     flat = {k: v for k, v in flat.items() if k in match}
                 filtered_cur_targets.append(flat)
             cur['targets'] = _normalize(filtered_cur_targets)

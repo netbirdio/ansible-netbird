@@ -77,6 +77,11 @@ netbird_services:
 {% if target.path is defined and target.path != '/' %}
         path: "{{ target.path }}"
 {% endif %}
+{# Written for every target the server reports it on, inherit included, so
+   applying the export enforces it rather than keeping a later dashboard edit. #}
+{% if target.access_action is defined and target.access_action not in [none, ''] %}
+        access_action: "{{ target.access_action }}"
+{% endif %}
 {% endfor %}
 {% endif %}
 {% set auth = svc.auth | default({}) %}

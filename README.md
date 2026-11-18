@@ -371,8 +371,11 @@ Manage NetBird routes (deprecated API, prefer `netbird_network` with routers/res
 
 Publish an internal application through the NetBird reverse proxy. Targets
 ride a network resource (`subnet`/`host`/`domain`), a `peer`, or a `cluster`;
-HTTP-only options such as `path_rewrite` are omitted automatically for
-TCP/UDP/TLS services.
+the default for the HTTP-only `path_rewrite` is not sent for TCP/UDP/TLS
+services, so leave it unset there (an explicit value is sent and rejected).
+On HTTP services, `targets[].access_action` (`inherit`, `bypass` or `block`,
+NetBird v0.81.0+, with all proxies upgraded) sets authentication per path; see
+the module documentation for how an omitted action is handled.
 
 ```yaml
 - name: Expose an internal app over the overlay
