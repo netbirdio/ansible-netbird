@@ -170,6 +170,48 @@ options:
             rejects any value on a TCP, UDP or TLS service, so it is omitted
             from the request for those unless you set it explicitly.
         type: str
+      access_action:
+        description:
+          - Authentication applied to requests routed to this target by its
+            O(targets[].path).
+          - V(inherit) uses the service's authentication. V(bypass) skips the
+            service's SSO, password, PIN and header authentication for this
+            path, making it public; service-level access restrictions still
+            apply. V(block) answers C(403) without contacting the backend.
+          - When omitted, the target keeps the action it already has on the
+            service (matched by target, then by path), and a new path gets
+            V(inherit). A playbook that does not mention the option therefore
+            leaves actions set in the dashboard in place. Where the server would
+            carry them forward itself, the actions are left out of the request,
+            so one changed in the dashboard while the task runs is not undone.
+            An action belongs to its path, so moving a target to a new path or
+            removing it drops the action with it.
+          - Set it, V(inherit) included, to have the playbook enforce the
+            action. The export role writes it for every target the server
+            reports it on, so applying such an export reverts actions changed
+            in the dashboard since. An export taken from a server without the
+            feature contains no actions and enforces none.
+          - HTTP services only. V(bypass) is not allowed on private services.
+            Once any target uses V(bypass) or V(block), enabled targets must
+            have distinct paths. A path with a non-inherit action must start
+            with C(/), contain no percent sign, backslash, question mark, hash
+            or semicolon, and have no C(.) or C(..) segments.
+          - Requires NetBird management v0.81.0 or later. A server without it
+            ignores the action, so requesting V(bypass) or V(block) from one
+            fails instead. For an existing service this is detected before
+            anything is written. A new service is created with every target
+            disabled, so it serves no route, and its targets are enabled only
+            once the server reports the requested actions; otherwise it is
+            removed. If enabling fails, the service is read back and its state
+            reported; after a transient failure, rerunning the task completes
+            it. Check mode cannot detect an unsupported server for a new
+            service.
+          - The actions are enforced by the reverse proxy. Upgrade every proxy
+            in the service's cluster before relying on V(bypass) or V(block),
+            since older proxies ignore them and apply the service's authentication.
+        type: str
+        choices: ['inherit', 'bypass', 'block']
+        version_added: "1.5.0"
   auth:
     description:
       - Optional authentication in front of the service. Omit to leave the
@@ -249,6 +291,38 @@ EXAMPLES = r'''
         target_type: subnet
     state: present
 
+- name: Public app with a public landing page and a blocked admin path
+  community.ansible_netbird.netbird_service:
+    api_url: "https://netbird.example.com"
+    api_token: "{{ netbird_token }}"
+    domain: "myapp.netbird.example.com"
+    private: false
+    auth:
+      bearer_auth:
+        enabled: true
+        distribution_groups:
+          - "all-users-group-id"
+    targets:
+      - target_id: "host-resource-id"
+        target_type: host
+        port: 8080
+        direct_upstream: false
+        path: /
+        access_action: inherit
+      - target_id: "host-resource-id"
+        target_type: host
+        port: 8080
+        direct_upstream: false
+        path: /public/
+        access_action: bypass
+      - target_id: "host-resource-id"
+        target_type: host
+        port: 8080
+        direct_upstream: false
+        path: /admin
+        access_action: block
+    state: present
+
 - name: Delete a service
   community.ansible_netbird.netbird_service:
     api_url: "https://netbird.example.com"
@@ -323,7 +397,198 @@ def build_target(target, mode='http'):
     # rather than merely redundant.
     if target.get('host'):
         payload['host'] = target['host']
+    if target.get('access_action'):
+        payload['access_action'] = target['access_action']
     return payload
+
+
+def target_path(target):
+    """The path a target is selected by; the API treats unset as ``/``."""
+    return target.get('path') or '/'
+
+
+def resolve_access_actions(payloads, requested, current_targets):
+    """Decide the ``access_action`` each target payload is sent with, if any.
+
+    When no target in a request names an action, the server carries existing
+    actions forward by path inside its own update transaction -- so an action
+    changed in the dashboard between this module's read and its write is not
+    lost -- but it refuses to drop or re-path a target whose action is
+    ``bypass`` or ``block``, and it hands a path's action to whatever target
+    takes that path. So the actions are worked out here, then left out of the
+    request whenever the server's merge would give the same result, and sent
+    explicitly on every target only when it would not (or when the playbook
+    sets one).
+
+    An unset action keeps the current one, so a ``block`` set in the dashboard
+    is not reset to ``inherit`` by a playbook that never mentions it. A path
+    can hold an enabled target and disabled standbys, each with its own action:
+
+    - an enabled target takes the action of the enabled target currently
+      serving its path -- the action in force there -- so enabling a standby or
+      swapping the backend keeps it; failing that its own action (a standby
+      being enabled), and never the action of a different, disabled target,
+      which is not in force -- such a path gets ``inherit``;
+    - a disabled target keeps its own action, matched by target, protocol
+      and state, then the one action on its path if there is only one;
+    - a new path gets ``inherit``.
+
+    Where the targets an omitted action would come from disagree, the task
+    fails and asks for the action to be set, rather than pick one.
+
+    Nothing is added when the caller set no action and the server does not
+    report the field, so requests to servers without the feature are unchanged.
+    """
+    current_targets = current_targets or []
+    explicit = any(t.get('access_action') for t in requested)
+    reported = any('access_action' in t for t in current_targets)
+    if not (explicit or reported):
+        return
+    exact = {}
+    own = {}
+    by_key = {}
+    active = {}
+    by_path = {}
+    for target in current_targets:
+        action = target.get('access_action')
+        if not action:
+            continue
+        key, path, enabled = action_key(target), target_path(target), target_enabled(target)
+        protocol = target.get('protocol')
+        exact.setdefault((key, protocol, enabled), set()).add(action)
+        own.setdefault((key, protocol), set()).add(action)
+        by_key.setdefault(key, set()).add(action)
+        by_path.setdefault(path, set()).add(action)
+        if enabled:
+            active.setdefault(path, set()).add(action)
+    for payload, wanted in zip(payloads, requested):
+        if wanted.get('access_action'):
+            payload['access_action'] = wanted['access_action']
+            continue
+        key, path, protocol = action_key(payload), target_path(payload), payload.get('protocol')
+        if target_enabled(payload):
+            candidates = (active.get(path), exact.get((key, protocol, True)), own.get((key, protocol)))
+        else:
+            candidates = (exact.get((key, protocol, False)), own.get((key, protocol)))
+        found = next((c for c in candidates if c), None)
+        if found and len(found) > 1:
+            raise AmbiguousAccessAction(
+                'targets[].access_action: path {0} has several targets matching this one with different '
+                'actions ({1}); set access_action on it explicitly'.format(path, ', '.join(sorted(found))))
+        # Same key under another protocol: either this target with its
+        # protocol changed, or a different one. Its bypass or block is not
+        # handed over on a guess.
+        if not found and (by_key.get(key, set()) - {'inherit'}):
+            raise AmbiguousAccessAction(
+                'targets[].access_action: path {0} has a target with the same resource and port but '
+                'another protocol, with action {1}; set access_action on this target explicitly'.format(
+                    path, ', '.join(sorted(by_key[key]))))
+        if not found and not target_enabled(payload):
+            found = by_path.get(path)
+            if found and len(found) > 1:
+                raise AmbiguousAccessAction(
+                    'targets[].access_action: path {0} has targets with different actions ({1}) and none '
+                    'matches this one; set access_action on it explicitly'.format(path, ', '.join(sorted(found))))
+        payload['access_action'] = next(iter(found)) if found else 'inherit'
+    if not explicit and predicted_server_merge(payloads, current_targets) == [
+            p['access_action'] for p in payloads]:
+        for payload in payloads:
+            del payload['access_action']
+
+
+def action_key(target):
+    """``target_key`` plus a cluster target's host.
+
+    ``target_key`` leaves the host out for every type but subnet, because the
+    API rewrites it on read -- except for cluster targets, whose host is the
+    operator's upstream. A different upstream is a different backend, so it
+    must not inherit the other's action.
+    """
+    host = (target.get('host') or '') if target.get('target_type') == 'cluster' else None
+    return target_key(target) + (host,)
+
+
+def predicted_server_merge(payloads, current_targets):
+    """The actions the server would give the targets if the request named none.
+
+    Mirrors ``preserveTargetAccessActions``: without a bypass or block on the
+    service nothing is carried and every target is ``inherit``; otherwise each
+    target takes the action stored for its path (first come, first served),
+    and the update is refused -- None here -- if a path holding bypass or
+    block is dropped or the service has two targets on one path.
+    """
+    if not any(t.get('access_action') not in (None, 'inherit') for t in current_targets):
+        return ['inherit'] * len(payloads)
+    by_path = {}
+    for target in current_targets:
+        path = target_path(target)
+        if path in by_path:
+            return None
+        by_path[path] = target.get('access_action') or 'inherit'
+    actions = [by_path.pop(target_path(p), 'inherit') for p in payloads]
+    if any(action != 'inherit' for action in by_path.values()):
+        return None
+    return actions
+
+
+class AmbiguousAccessAction(ValueError):
+    """An omitted action could be taken from targets that disagree."""
+
+
+def access_action_input_problem(desired):
+    """Server-side rules for access actions that can be checked before writing.
+
+    Checked up front because a staged create would otherwise pass them (its
+    targets are disabled) and only fail when they are enabled.
+    """
+    targets = desired.get('targets') or []
+    controlled = [t for t in targets if t.get('access_action') not in (None, 'inherit')]
+    if not controlled:
+        return None
+    if desired.get('mode') in L4_MODES:
+        return 'targets[].access_action bypass and block are only supported for HTTP services'
+    if desired.get('private') and any(t.get('access_action') == 'bypass' for t in controlled):
+        return 'targets[].access_action bypass is not allowed on private services'
+    # The server only requires distinct paths once an ENABLED target uses
+    # bypass or block.
+    if not any(target_enabled(t) for t in controlled):
+        return None
+    seen = set()
+    for target in targets:
+        if not target_enabled(target):
+            continue
+        path = target_path(target)
+        if path in seen:
+            return ('targets[].access_action: once a target uses bypass or block, enabled targets need '
+                    'distinct paths, and {0} is used more than once').format(path)
+        seen.add(path)
+    return None
+
+
+def target_enabled(target):
+    return bool(target.get('enabled', True))
+
+
+def access_action_unsupported(service, requested):
+    """Whether a non-inherit action was requested from a server without it.
+
+    A server that predates per-target actions ignores the field, so a requested
+    ``block`` would silently leave the path open. It is detected by the
+    service's targets not reporting ``access_action`` at all.
+    """
+    targets = (service or {}).get('targets') or []
+    return requests_access_control(requested) and bool(targets) and not any('access_action' in t for t in targets)
+
+
+def requests_access_control(requested):
+    """Whether any requested target asks for bypass or block."""
+    return any(t.get('access_action') not in (None, 'inherit') for t in (requested or []))
+
+
+ACCESS_ACTION_UNSUPPORTED = (
+    'targets[].access_action requires NetBird management v0.81.0 or later; '
+    'this server does not report it, so the requested action would not be applied'
+)
 
 
 def build_auth(auth, current_auth=None):
@@ -401,7 +666,9 @@ def build_body(params, domain, current=None):
     elif current.get('access_groups') is not None:
         body['access_groups'] = extract_ids(current['access_groups'])
     if params.get('targets') is not None:
-        body['targets'] = [build_target(t, body['mode']) for t in params['targets']]
+        targets = [build_target(t, body['mode']) for t in params['targets']]
+        resolve_access_actions(targets, params['targets'], current.get('targets'))
+        body['targets'] = targets
     elif current.get('targets') is not None:
         body['targets'] = current['targets']
     if params.get('auth') is not None:
@@ -420,14 +687,41 @@ def target_key(target):
     return (target.get('target_id'), host, target.get('port'), target.get('path') or '/')
 
 
+def pair_targets(current, desired):
+    """Pair each desired target with a current one; None if they do not pair up.
+
+    Targets are matched by ``target_key``. A path may hold an enabled target
+    and a disabled standby that share every key field, so a key can match more
+    than one target; those pair one-to-one, same enabled state first, rather
+    than collapsing so that one hides a change to the other.
+    """
+    groups = {}
+    for target in current or []:
+        groups.setdefault(target_key(target), []).append(target)
+    pairs = []
+    for wanted in desired or []:
+        pool = groups.get(target_key(wanted))
+        if not pool:
+            return None
+        # Same enabled state and protocol first: standbys sharing a key are
+        # told apart by what they are, not by their order in the list.
+        match = min(pool, key=lambda t: (target_enabled(t) != target_enabled(wanted),
+                                         t.get('protocol') != wanted.get('protocol'),
+                                         (t.get('access_action') or 'inherit')
+                                         != (wanted.get('access_action') or 'inherit')))
+        pool.remove(match)
+        pairs.append((match, wanted))
+    if any(groups.values()):
+        return None
+    return pairs
+
+
 def targets_differ(current, desired):
     """Compare target lists, ignoring server-computed fields."""
-    cur = {target_key(t): t for t in (current or [])}
-    des = {target_key(t): t for t in (desired or [])}
-    if set(cur) != set(des):
+    pairs = pair_targets(current, desired)
+    if pairs is None:
         return True
-    for key, desired_target in des.items():
-        current_target = cur[key]
+    for current_target, desired_target in pairs:
         if current_target.get('protocol') != desired_target.get('protocol'):
             return True
         if bool(current_target.get('enabled', True)) != bool(desired_target.get('enabled', True)):
@@ -454,6 +748,11 @@ def targets_differ(current, desired):
         des_proxy = (desired_target.get('options') or {}).get('proxy_protocol', False)
         if bool(cur_proxy) != bool(des_proxy):
             return True
+        # Compared only when both sides carry it: a server without per-target
+        # actions never returns the field, and would otherwise never converge.
+        if 'access_action' in desired_target and 'access_action' in current_target:
+            if (current_target.get('access_action') or 'inherit') != desired_target['access_action']:
+                return True
         # `host` is absent from target_key for everything but subnet, because
         # replaceHostByLookup overwrites it on every read path -- peer targets
         # get the peer's IP, host and domain targets the resource's address or
@@ -513,6 +812,103 @@ def service_needs_update(current, desired):
     return False
 
 
+def create_service(module, api, desired, requested_targets):
+    """Create a service, without serving a route before its access actions hold.
+
+    An existing service always has targets (the API requires one), so a server
+    without per-target actions is caught before an update. A new service has
+    nothing to judge the server by until it exists. When bypass or block is
+    requested it is therefore created with every target disabled -- a disabled
+    target is left out of the proxy mapping, on every server version, so
+    nothing is routable -- checked, and only then are its targets enabled.
+
+    Should the enabling update fail, the service is read back and its state
+    reported. While its targets are still disabled, rerunning the task finds
+    it by domain and enables them through an ordinary update -- unless the
+    server rejected the configuration, which has to be corrected first.
+    """
+    if not requests_access_control(requested_targets):
+        created, _unused = api.create_service(desired)
+        return created
+    staged_body = dict(desired, targets=[dict(t, enabled=False) for t in desired['targets']])
+    staged, _unused = api.create_service(staged_body)
+    problem = staged_action_problem(staged, staged_body)
+    if problem:
+        try:
+            api.delete_service(staged['id'])
+        except Exception as e:  # pylint: disable=broad-except
+            # The removal may still have gone through (a response cut short):
+            # look before saying what is left.
+            module.fail_json(msg='{0}; {1}'.format(problem, staged_removal_state(api, staged['id'], e)),
+                             changed=True, service=staged)
+        module.fail_json(msg='{0}; the service was created with its targets disabled and has been removed'.format(problem),
+                         changed=False, service={})
+    if not any(target_enabled(t) for t in desired['targets']):
+        return staged
+    try:
+        created, _unused = api.update_service(staged['id'], desired)
+    except Exception as e:  # pylint: disable=broad-except
+        # Any failure, including a response cut short after the update was
+        # applied: what matters is the state the service is now in.
+        rejected = isinstance(e, NetBirdAPIError) and e.status_code in (400, 409, 422)
+        if rejected:
+            advice = 'The server rejected the request: correct the configuration, then rerun the task.'
+        else:
+            advice = 'Rerunning the task completes it.'
+        try:
+            current, _unused = api.get_service(staged['id'])
+        except Exception:  # pylint: disable=broad-except
+            module.fail_json(
+                msg=('Service {0} was created with its targets disabled and enabling them failed ({1}); '
+                     'its state could not be read back, so it is unknown. {2}').format(staged['id'], e, advice),
+                changed=True)
+        if not service_needs_update(current, desired):
+            return current
+        if any(target_enabled(t) for t in current.get('targets') or []):
+            state = 'Read back, it has enabled targets but does not match the requested configuration.'
+        else:
+            state = 'Read back, every target is still disabled, so it serves no route.'
+        module.fail_json(
+            msg='Enabling the targets of new service {0} failed ({1}). {2} {3}'.format(staged['id'], e, state, advice),
+            changed=True, service=current)
+    return created
+
+
+def staged_removal_state(api, service_id, error):
+    """Describe a staged service whose removal failed, from a fresh read."""
+    unconfirmed = ('removing staged service {0} failed ({1}) and it could not be read back, so whether it '
+                   'remains is unconfirmed: check it and delete it if present').format(service_id, error)
+    try:
+        api.get_service(service_id)
+    except NetBirdAPIError as e:
+        if e.status_code == 404:
+            return 'removing the staged service reported an error ({0}) but it is gone'.format(error)
+        return unconfirmed
+    except Exception:  # pylint: disable=broad-except
+        return unconfirmed
+    return ('removing the service failed ({0}). Service {1} is left with every target disabled, so it '
+            'serves no route: delete it.').format(error, service_id)
+
+
+def staged_action_problem(staged, sent):
+    """Why the staged service cannot be enabled, or None.
+
+    Every target must come back with the action that was sent: a server that
+    predates the feature returns none, and any other difference means the
+    requested protection is not what the server holds.
+    """
+    if not any('access_action' in t for t in staged.get('targets') or []):
+        return ACCESS_ACTION_UNSUPPORTED
+    pairs = pair_targets(staged.get('targets'), sent['targets'])
+    if pairs is None:
+        return 'the created service did not return the targets that were sent'
+    for got, wanted in pairs:
+        if (got.get('access_action') or 'inherit') != wanted.get('access_action', 'inherit'):
+            return 'the server stored access_action {0!r} where {1!r} was requested for path {2}'.format(
+                got.get('access_action'), wanted.get('access_action'), target_path(wanted))
+    return None
+
+
 def run_module():
     """Main module execution."""
     argument_spec = netbird_argument_spec()
@@ -547,6 +943,7 @@ def run_module():
                 path=dict(type='str', default='/'),
                 path_rewrite=dict(type='str'),
                 proxy_protocol=dict(type='bool', default=False),
+                access_action=dict(type='str', choices=['inherit', 'bypass', 'block']),
             ),
         ),
         auth=dict(
@@ -605,6 +1002,16 @@ def run_module():
             except NetBirdAPIError as e:
                 if e.status_code != 404:
                     raise
+            # A stale service_id must not create a second service for a domain
+            # that already has one -- nor silently manage that other service,
+            # which nothing ties to this task. Name it and let the operator say.
+            if not existing and domain and state == 'present':
+                other = find_service_by_domain(api, domain)
+                if other:
+                    module.fail_json(msg=(
+                        'service_id {0} was not found, and domain {1} is served by service {2}; set service_id '
+                        'to {2} to manage that service, or omit service_id to manage it by domain').format(
+                            service_id, domain, other.get('id')))
         elif domain:
             existing = find_service_by_domain(api, domain)
 
@@ -619,7 +1026,17 @@ def run_module():
         # state == 'present'
         if not existing and not domain:
             module.fail_json(msg='domain is required to create a service')
-        desired = build_body(module.params, domain or (existing or {}).get('domain'), current=existing)
+        try:
+            desired = build_body(module.params, domain or (existing or {}).get('domain'), current=existing)
+        except AmbiguousAccessAction as e:
+            module.fail_json(msg=str(e))
+        requested_targets = module.params.get('targets')
+        input_problem = access_action_input_problem(desired)
+        if input_problem:
+            module.fail_json(msg=input_problem)
+
+        if access_action_unsupported(existing, requested_targets):
+            module.fail_json(msg=ACCESS_ACTION_UNSUPPORTED)
 
         if existing:
             if service_needs_update(existing, desired):
@@ -633,8 +1050,7 @@ def run_module():
                 result['service'] = existing
         else:
             if not module.check_mode:
-                created, _unused = api.create_service(desired)
-                result['service'] = created
+                result['service'] = create_service(module, api, desired, requested_targets)
             else:
                 result['service'] = desired
             result['changed'] = True

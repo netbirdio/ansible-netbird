@@ -1,0 +1,27 @@
+minor_changes:
+  - netbird_service - added ``targets[].access_action`` (``inherit``, ``bypass``
+    or ``block``) for per-path authentication on HTTP services, available on
+    NetBird management v0.81.0 and later. When omitted, a target keeps the
+    action it already has, so an action set in the dashboard is not reset;
+    set it, ``inherit`` included, to enforce it. Requesting ``bypass`` or
+    ``block`` from a server that does not support it fails; a new service is
+    created with its targets disabled and they are enabled only once the
+    server reports the requested actions, so no route is served without them.
+    ``bypass`` or ``block`` on a TCP, UDP or TLS service, or on enabled targets
+    sharing a path, is refused before anything is written.
+    The actions are enforced by the reverse proxy, so
+    every proxy in the service's cluster must be upgraded too
+    (https://github.com/netbirdio/ansible-netbird/issues/70).
+  - export role - services export ``targets[].access_action`` for every target
+    the server reports it on, so applying an export reverts actions changed in
+    the dashboard since.
+bugfixes:
+  - netbird_service - removing or re-pathing a target whose access action is
+    ``bypass`` or ``block`` failed with ``include access_action when removing or
+    changing controlled target location``. Every target is now sent with an
+    explicit action, so the change applies.
+  - preview - services with several path-routed targets on the same resource and
+    port were reported as changed on an unedited export, because the targets
+    were matched by resource and port only. Targets are now matched by path and
+    subnet host as well, and targets that still share all of these are paired
+    one-to-one.
