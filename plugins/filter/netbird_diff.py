@@ -26,7 +26,7 @@ _TARGET_BOOL_OPTIONS = frozenset(('direct_upstream', 'skip_tls_verify',
                                   'proxy_protocol'))
 # What netbird_service sends for a target option the config leaves out.
 _MODULE_TARGET_DEFAULTS = {'direct_upstream': True, 'skip_tls_verify': False,
-                           'proxy_protocol': False}
+                           'proxy_protocol': False, 'enabled': True}
 
 
 def _normalize(value):
@@ -279,8 +279,10 @@ def _flatten_target(target):
     (``netbird_service`` input, which has no ``options`` key) gets the module's
     defaults for absent keys, because those are what an apply sends: a config
     that leaves out ``direct_upstream`` applies it as true, so the preview has
-    to show that change rather than skip the key. An explicit null is left as
-    is -- the module rejects it -- so it reads as a change.
+    to show that change rather than skip the key. The same goes for
+    ``enabled``: left out, the module applies it as true, which re-enables a
+    disabled target. An explicit null is left as is -- the module rejects it
+    -- so it reads as a change.
     """
     flat = {k: v for k, v in target.items() if k != 'options'}
     if 'options' in target:
@@ -292,6 +294,8 @@ def _flatten_target(target):
                 flat.setdefault(key, options[key])
             elif key in _TARGET_BOOL_OPTIONS:
                 flat.setdefault(key, False)
+        # The module reads a target without ``enabled`` as enabled.
+        flat.setdefault('enabled', True)
     else:
         for key, default in _MODULE_TARGET_DEFAULTS.items():
             flat.setdefault(key, default)

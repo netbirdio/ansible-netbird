@@ -227,6 +227,36 @@ class TestOmittedFalseOptions:
         diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
         assert any('targets' in d for d in diffs)
 
+    def test_an_omitted_enabled_is_previewed_as_re_enabling(self):
+        """The module applies a target without ``enabled`` as enabled, so
+        against a disabled target that is a change."""
+        current = self._api(direct_upstream=True)
+        current['targets'][0]['enabled'] = False
+        target = dict(exported_service()['targets'][0])
+        del target['enabled']
+        diffs = _compare_service(current, exported_service(targets=[target]),
+                                 group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_an_omitted_enabled_matches_an_enabled_target(self):
+        target = dict(exported_service()['targets'][0])
+        del target['enabled']
+        assert _compare_service(self._api(direct_upstream=True),
+                                exported_service(targets=[target]),
+                                group_ids=GROUP_IDS) == []
+
+    def test_explicit_enabled_false_matches_a_disabled_target(self):
+        current = self._api(direct_upstream=True)
+        current['targets'][0]['enabled'] = False
+        desired = self._exported(direct_upstream=True, enabled=False)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_an_api_target_without_enabled_reads_as_enabled(self):
+        current = self._api(direct_upstream=True)
+        del current['targets'][0]['enabled']
+        assert _compare_service(current, self._exported(direct_upstream=True),
+                                group_ids=GROUP_IDS) == []
+
     @pytest.mark.parametrize('value', ['off', 'no', 'false', 'False', '0', 0, 0.0])
     def test_a_quoted_false_reads_as_false(self, value):
         """The module converts these when parsing its arguments."""

@@ -56,7 +56,7 @@ def render(targets, mode='http'):
         'service_domains_data': {'data': []},
         'group_id_map': {},
     }
-    with open(TEMPLATE) as f:
+    with open(TEMPLATE, encoding='utf-8') as f:
         source = f.read()
     rendered = Templar(loader=DataLoader(), variables=variables).template(trust_as_template(source))
     return yaml.safe_load(rendered)['netbird_services'][0]['targets']
@@ -91,6 +91,9 @@ class TestDirectUpstream:
     def test_written_as_false_when_null(self):
         assert render([api_target({'direct_upstream': None})])[0]['direct_upstream'] is False
 
+    def test_written_as_false_when_false(self):
+        assert render([api_target({'direct_upstream': False})])[0]['direct_upstream'] is False
+
     def test_written_as_true(self):
         assert render([api_target({'direct_upstream': True})])[0]['direct_upstream'] is True
 
@@ -103,9 +106,10 @@ class TestProxyProtocol:
                                      protocol='tcp')], mode='tcp')
         assert targets[0]['proxy_protocol'] is True
 
-    def test_left_out_when_off(self):
+    @pytest.mark.parametrize('options', [{}, {'proxy_protocol': False}])
+    def test_left_out_when_off(self, options):
         """False is the module default, so it is left out like before."""
-        assert 'proxy_protocol' not in render([api_target({})])[0]
+        assert 'proxy_protocol' not in render([api_target(options)])[0]
 
 
 class TestOtherOptionsUnchanged:
