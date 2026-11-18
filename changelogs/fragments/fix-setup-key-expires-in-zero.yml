@@ -1,0 +1,7 @@
+bugfixes:
+  - >-
+    configure role - a setup key with ``expires_in: 0`` no longer fails the
+    value pre-flight (https://github.com/netbirdio/ansible-netbird/pull/69).
+    The API and dashboard use 0 to mean "never expires", but the pre-flight
+    required a positive integer, so such a key could not be applied.
+    Negative and non-integer values are still rejected.

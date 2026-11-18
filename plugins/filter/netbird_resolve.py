@@ -462,8 +462,8 @@ def netbird_value_problems(policies, setup_keys=None):
     value checks that are unambiguous and stable regardless of NetBird API
     version (so they won't false-positive): policy rule ports / port ranges
     must be integers in 1-65535 with start <= end, and setup-key ``expires_in``
-    must be a non-negative integer, where 0 means "never expires".
-    which the NetBird API itself accepts silently.
+    must be a non-negative integer, where 0 means "never expires". Notably this
+    catches inverted port ranges, which the NetBird API itself accepts silently.
 
     CIDR / DNS-record / posture-check value validation is deliberately NOT done
     here: those rules are API-version-specific and reimplementing them risks

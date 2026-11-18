@@ -167,10 +167,10 @@
     # Catches structurally-invalid field values before any mutation, for the
     # small set of checks that are unambiguous and API-version-stable: policy
     # rule ports / port_ranges (ints in 1-65535, start <= end) and setup-key
-    # expires_in (> 0). This notably catches inverted port ranges, which the
-    # NetBird API itself accepts silently. CIDR / DNS-record / posture-check
-    # value validation is intentionally left to the API (reimplementing those
-    # rules risks rejecting configs the API would accept).
+    # expires_in (>= 0; 0 = never expires). This notably catches inverted port
+    # ranges, which the NetBird API itself accepts silently. CIDR / DNS-record
+    # / posture-check value validation is intentionally left to the API
+    # (reimplementing those rules risks rejecting configs the API would accept).
     # =====================================================================
     - name: "Pre-flight: collect invalid field values"
       ansible.builtin.set_fact:
