@@ -48,7 +48,7 @@ def render(targets):
         'service_domains_data': {'data': []},
         'group_id_map': {},
     }
-    with open(TEMPLATE) as f:
+    with open(TEMPLATE, encoding='utf-8') as f:
         source = f.read()
     rendered = Templar(loader=DataLoader(), variables=variables).template(trust_as_template(source))
     return {t.get('path', '/'): t for t in yaml.safe_load(rendered)['netbird_services'][0]['targets']}

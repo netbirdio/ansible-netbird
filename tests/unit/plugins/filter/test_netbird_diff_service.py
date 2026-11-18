@@ -462,6 +462,15 @@ class TestPathRoutedTargets:
         desired = exported_service(targets=[dict(exported_path_target('/'), path='/')])
         assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
 
+    def test_an_omitted_path_is_previewed_as_moving_the_target_to_root(self):
+        """The module applies a target without ``path`` at ``/``, so against a
+        target at ``/api`` that is a change, even with every other field the
+        same."""
+        current = api_service(targets=[api_path_target('/api')])
+        desired = exported_service(targets=[exported_path_target('/')])
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
     def test_an_edited_access_action_is_detected(self):
         diffs = _compare_service(self._current(), self._exported('bypass'),
                                  group_ids=GROUP_IDS)
