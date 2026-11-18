@@ -46,14 +46,14 @@ attached to the [latest GitHub Release](https://github.com/netbirdio/ansible-net
 
 ```bash
 ansible-galaxy collection install \
-  https://github.com/netbirdio/ansible-netbird/releases/download/v1.4.1/community-ansible_netbird-1.4.1.tar.gz
+  https://github.com/netbirdio/ansible-netbird/releases/download/v1.5.0/community-ansible_netbird-1.5.0.tar.gz
 ```
 
 Or via `requirements.yml`:
 
 ```yaml
 collections:
-  - name: https://github.com/netbirdio/ansible-netbird/releases/download/v1.4.1/community-ansible_netbird-1.4.1.tar.gz
+  - name: https://github.com/netbirdio/ansible-netbird/releases/download/v1.5.0/community-ansible_netbird-1.5.0.tar.gz
 ```
 
 Alternatively, build and install from source:

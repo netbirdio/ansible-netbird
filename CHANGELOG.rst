@@ -4,6 +4,32 @@ Community.Ansible\_Netbird Release Notes
 
 .. contents:: Topics
 
+v1.5.0
+======
+
+Release Summary
+---------------
+
+Feature release. ``netbird_service`` gains per-target ``access_action`` (``inherit``, ``bypass`` or ``block``) for per-path authentication on HTTP services; it needs NetBird management v0.81.0 or later with every reverse proxy upgraded. Also fixes removing or re-pathing a target whose action is ``bypass`` or ``block``, exports that dropped ``direct_upstream`` and ``proxy_protocol``, and the configure pre-flight rejecting a setup key with ``expires_in`` 0.
+
+Upgrading - if you manage services with the export and configure roles, re-export after upgrading and preview before applying. Exports made with 1.4.x leave out ``direct_upstream`` where it is off, so applying one turns it on and the proxy reaches those backends from its own host instead of through the NetBird tunnel (1.4.x already did this; files exported before the upgrade still have the gap). New exports record each target's ``access_action``, so applying an export undoes action changes made in the dashboard since it was taken. Using ``netbird_service`` directly needs no change.
+
+Minor Changes
+-------------
+
+- export role - services export ``targets[].access_action`` for every target the server reports it on, so applying an export reverts actions changed in the dashboard since.
+- netbird_service - added ``targets[].access_action`` (``inherit``, ``bypass`` or ``block``) for per-path authentication on HTTP services, available on NetBird management v0.81.0 and later. When omitted, a target keeps the action it already has, so an action set in the dashboard is not reset; set it, ``inherit`` included, to enforce it. Requesting ``bypass`` or ``block`` from a server that does not support it fails; a new service is created with its targets disabled and they are enabled only once the server reports the requested actions, so a server that would drop them never serves the new routes. ``bypass`` or ``block`` on a TCP, UDP or TLS service or on enabled targets sharing a path, and ``bypass`` on a private service, are refused before anything is written. The actions are enforced by the reverse proxy, so every proxy in the service's cluster must be upgraded too (https://github.com/netbirdio/ansible-netbird/issues/70).
+
+Bugfixes
+--------
+
+- configure role - a setup key with ``expires_in: 0`` no longer fails the value pre-flight (https://github.com/netbirdio/ansible-netbird/pull/69). The API and dashboard use 0 to mean "never expires", but the pre-flight required a positive integer, so such a key could not be applied. Negative and non-integer values are still rejected.
+- export role - services now always export ``targets[].direct_upstream``. The API omits it when false while ``netbird_service`` defaults it to true, so applying an export switched tunnel-dialed targets to direct dialing, or failed on proxy clusters that do not allow direct upstreams.
+- export role - services now export ``targets[].proxy_protocol`` when it is enabled. It was not exported, so applying an export turned it off.
+- netbird_service - removing or re-pathing a target whose access action is ``bypass`` or ``block`` failed with ``include access_action when removing or changing controlled target location``. Such a change now sends every target's action explicitly, so it applies. Other updates leave the actions out and the server keeps them, so an action changed in the dashboard while the task runs is not overwritten.
+- preview - service target options are compared at the value an apply sends. A boolean option the API omits reads as false, and one a config leaves out reads as the ``netbird_service`` default, so a config without ``direct_upstream`` now previews the switch to direct dialing instead of reporting no change. A target without ``enabled`` reads as enabled, so a config that would re-enable a disabled target previews that too.
+- preview - services with several path-routed targets on the same resource and port were reported as changed on an unedited export, because the targets were matched by resource and port only. Targets are now matched by path and subnet host as well, and targets that still share all of these are paired one-to-one.
+
 v1.4.1
 ======
 
