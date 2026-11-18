@@ -153,6 +153,166 @@ class TestTargetNormalization:
         assert any('targets' in d for d in diffs)
 
 
+class TestOmittedFalseOptions:
+    """The API leaves a boolean option out of ``options`` when it is false.
+    The export now states ``direct_upstream`` either way (netbird_service
+    defaults it to true, so omitting it flipped targets on apply), and an
+    explicit false must read as equal to an omitted one."""
+
+    def _api(self, **options):
+        target = api_service()['targets'][0]
+        target['options'] = dict(options)
+        return api_service(targets=[target])
+
+    def _exported(self, **flags):
+        target = dict(exported_service()['targets'][0])
+        target.pop('skip_tls_verify', None)
+        target.update(flags)
+        return exported_service(targets=[target])
+
+    def test_explicit_false_matches_an_omitted_option(self):
+        current = self._api(path_rewrite='preserve')
+        desired = self._exported(direct_upstream=False)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_explicit_true_against_an_omitted_option_is_a_change(self):
+        current = self._api(path_rewrite='preserve')
+        desired = self._exported(direct_upstream=True)
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_exported_proxy_protocol_matches(self):
+        current = self._api(direct_upstream=True, proxy_protocol=True)
+        desired = self._exported(direct_upstream=True, proxy_protocol=True)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_an_omitted_direct_upstream_is_previewed_as_the_module_applies_it(self):
+        """A config without direct_upstream (an older export, or written by
+        hand) is applied with the module default, true. Against a target that
+        dials through the tunnel that is a change, and the preview must say so
+        rather than skip the key."""
+        current = self._api(path_rewrite='preserve')
+        desired = exported_service(targets=[{
+            k: v for k, v in exported_service()['targets'][0].items()
+            if k not in ('direct_upstream', 'skip_tls_verify')}])
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_an_omitted_proxy_protocol_is_previewed_as_turned_off(self):
+        """The module sends false for it, which turns off one that is on."""
+        current = self._api(direct_upstream=True, proxy_protocol=True)
+        desired = self._exported(direct_upstream=True)
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_null_api_options_read_as_all_false(self):
+        current = api_service()
+        current['targets'][0]['options'] = None
+        desired = self._exported(direct_upstream=False)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_api_target_without_options_reads_as_all_false(self):
+        """Older servers leave ``options`` out when no option is set. That is
+        still an API target, not a config one with module defaults."""
+        current = api_service()
+        del current['targets'][0]['options']
+        desired = self._exported(direct_upstream=False)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_a_null_config_option_is_reported(self):
+        """Left empty in YAML it is an explicit null, which the module rejects
+        rather than defaulting; the preview must not call it unchanged."""
+        current = self._api(direct_upstream=True)
+        desired = self._exported(direct_upstream=None)
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_an_omitted_enabled_is_previewed_as_re_enabling(self):
+        """The module applies a target without ``enabled`` as enabled, so
+        against a disabled target that is a change."""
+        current = self._api(direct_upstream=True)
+        current['targets'][0]['enabled'] = False
+        target = dict(exported_service()['targets'][0])
+        del target['enabled']
+        diffs = _compare_service(current, exported_service(targets=[target]),
+                                 group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_an_omitted_enabled_matches_an_enabled_target(self):
+        target = dict(exported_service()['targets'][0])
+        del target['enabled']
+        assert _compare_service(self._api(direct_upstream=True),
+                                exported_service(targets=[target]),
+                                group_ids=GROUP_IDS) == []
+
+    def test_explicit_enabled_false_matches_a_disabled_target(self):
+        current = self._api(direct_upstream=True)
+        current['targets'][0]['enabled'] = False
+        desired = self._exported(direct_upstream=True, enabled=False)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_an_api_target_without_enabled_reads_as_enabled(self):
+        current = self._api(direct_upstream=True)
+        del current['targets'][0]['enabled']
+        assert _compare_service(current, self._exported(direct_upstream=True),
+                                group_ids=GROUP_IDS) == []
+
+    @pytest.mark.parametrize('value', ['off', 'no', 'false', 'False', '0', 0, 0.0])
+    def test_a_quoted_false_reads_as_false(self, value):
+        """The module converts these when parsing its arguments."""
+        current = self._api(path_rewrite='preserve')
+        desired = self._exported(direct_upstream=value)
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_numeric_true_does_not_reorder_targets(self):
+        """1 sorts differently from True; left unconverted, two unchanged
+        targets were paired out of order."""
+        def api(port):
+            t = api_service()['targets'][0]
+            t.update(port=port, options={'direct_upstream': True})
+            return t
+
+        def cfg(port, **flags):
+            t = {k: v for k, v in exported_service()['targets'][0].items() if k != 'direct_upstream'}
+            t.update(port=port, **flags)
+            return t
+        current = api_service(targets=[api(8080), api(8081)])
+        desired = exported_service(targets=[cfg(8080), cfg(8081, direct_upstream=1)])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+    def test_an_unrecognised_string_is_reported(self):
+        current = self._api(path_rewrite='preserve')
+        desired = self._exported(direct_upstream='sometimes')
+        diffs = _compare_service(current, desired, group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    @pytest.mark.parametrize('nested', [{'direct_upstream': True}, None])
+    def test_nested_options_in_a_config_are_reported(self, nested):
+        """netbird_service rejects targets[].options, null included. The API
+        side matches the module defaults here, so only the unsupported key
+        itself can make the difference."""
+        current = self._api(direct_upstream=True, path_rewrite='preserve')
+        target = {k: v for k, v in exported_service()['targets'][0].items()
+                  if k not in ('direct_upstream', 'skip_tls_verify')}
+        target['options'] = nested
+        diffs = _compare_service(current, exported_service(targets=[target]), group_ids=GROUP_IDS)
+        assert any('targets' in d for d in diffs)
+
+    def test_without_nested_options_the_same_target_is_unchanged(self):
+        """The control case for the test above."""
+        current = self._api(direct_upstream=True, path_rewrite='preserve')
+        target = {k: v for k, v in exported_service()['targets'][0].items()
+                  if k not in ('direct_upstream', 'skip_tls_verify')}
+        assert _compare_service(current, exported_service(targets=[target]), group_ids=GROUP_IDS) == []
+
+    def test_omitted_options_matching_the_module_defaults_are_not_a_change(self):
+        current = self._api(direct_upstream=True)
+        desired = exported_service(targets=[{
+            k: v for k, v in exported_service()['targets'][0].items()
+            if k not in ('direct_upstream', 'skip_tls_verify')}])
+        assert _compare_service(current, desired, group_ids=GROUP_IDS) == []
+
+
 class TestAuthDeclaredKeys:
 
     def test_bearer_only_does_not_report_other_schemes_removed(self):
