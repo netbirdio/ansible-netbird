@@ -70,6 +70,10 @@ my_netbird_config/
 ├── settings.yml                    → netbird_settings
 ├── networks.yml                    → netbird_networks
 ├── setup_keys.yml                  → netbird_setup_keys (optional)
+├── services.yml                    → netbird_services, netbird_service_domains (optional)
+├── agent_network.yml               → netbird_an_settings, netbird_an_providers,
+│                                     netbird_an_guardrails, netbird_an_policies,
+│                                     netbird_an_budget_rules (optional)
 ├── access_control/
 │   ├── groups.yml                  → netbird_groups
 │   ├── posture_checks.yml          → netbird_posture_checks
@@ -86,18 +90,31 @@ The directory layout mirrors the NetBird UI navigation:
 - `dns/` — Nameservers, zones, DNS settings (UI: DNS)
 - `networks.yml` — Networks with routers and resources (UI: Networks)
 - `setup_keys.yml` — Peer enrollment keys (optional, UI: Setup Keys)
+- `services.yml` — Reverse-proxy services and their custom domains (optional)
+- `agent_network.yml` — Agent Network (AI gateway) settings, providers, guardrails, policies and budget rules (optional)
 
 ## Resource Dependencies
 
 Resources are applied in dependency order (handled automatically):
 
-1. **Account settings** — no dependencies
-2. **Posture checks** — no dependencies (referenced by policies)
-3. **Groups** — no dependencies (referenced by everything else)
+1. **Posture checks** — no dependencies (referenced by policies)
+2. **Groups** — no dependencies (referenced by everything else)
+3. **Account settings** — depends on groups
 4. **Setup keys** — depends on groups (for auto_groups)
 5. **DNS** — depends on groups
 6. **Networks** — depends on groups
-7. **Policies** — depends on groups + posture checks
+7. **Service custom domains** — no dependencies (referenced by services)
+8. **Services** — depends on groups, network resources and custom domains
+9. **Policies** — depends on groups + posture checks
+10. **Agent Network guardrails and providers** — no dependencies
+11. **Agent Network settings** — no dependencies
+12. **Agent Network policies** — depends on groups, providers and guardrails
+13. **Agent Network budget rules** — depends on groups
+
+In strict mode, unmanaged resources are removed after everything is applied:
+policies, networks, DNS, setup keys, posture checks, services, service domains,
+Agent Network policies, budget rules, providers and guardrails, and finally
+groups.
 
 ## Adding/Modifying Resources
 
@@ -221,7 +238,7 @@ netbird_networks:
 netbird_setup_keys:
   - name: "server-enrollment"
     key_type: "reusable"              # one-off or reusable
-    expires_in: 604800                # 7 days in seconds
+    expires_in: 604800                # 7 days in seconds; 0 = never expires
     auto_groups:
       - servers                       # resolved to ID automatically
     usage_limit: 0                    # 0 = unlimited (reusable only)
@@ -266,6 +283,150 @@ netbird_setup_keys:
 
 The old key is revoked. You can later change it to `state: absent` to delete it entirely.
 
+### Services
+
+Reverse-proxy services publish an internal application on a domain. Services
+are matched by `domain`.
+
+```yaml
+# services.yml
+netbird_services:
+  - domain: "myapp.netbird.example.com"
+    private: false
+    enabled: true
+    auth:
+      bearer_auth:
+        enabled: true
+        distribution_groups:
+          - all-users                 # resolved to ID automatically
+    targets:
+      - host: "10.0.0.30"
+        port: 8080
+        protocol: http
+        target_id: "host-resource-id" # network resource ID, not a name
+        target_type: host             # subnet, host, domain, peer, cluster
+        enabled: true
+        direct_upstream: false
+        access_action: inherit        # the service's authentication applies
+      - host: "10.0.0.30"
+        port: 8080
+        protocol: http
+        target_id: "host-resource-id"
+        target_type: host
+        enabled: true
+        direct_upstream: false
+        path: /public/
+        access_action: bypass         # no authentication under /public/
+      - host: "10.0.0.30"
+        port: 8080
+        protocol: http
+        target_id: "host-resource-id"
+        target_type: host
+        enabled: true
+        direct_upstream: false
+        path: /admin
+        access_action: block          # /admin is never served
+    state: present
+
+netbird_service_domains:
+  - domain: "app.example.com"
+    target_cluster: "eu.proxy.netbird.io"
+    validate: true
+    state: present
+```
+
+- `access_groups` and `bearer_auth.distribution_groups` take group names.
+  `target_id` takes the network resource ID; copy it from an export.
+- `direct_upstream` defaults to `true` (dial the backend from the proxy's host
+  network). Set it to `false` for targets the proxy reaches through the
+  tunnel; some proxy clusters, NetBird Cloud's among them, refuse `true` on
+  public services. The export always writes it.
+- `access_action` (`inherit`, `bypass` or `block`) sets authentication per
+  path on HTTP services. It needs NetBird management v0.81.0 or later, with
+  every reverse proxy in the service's cluster upgraded. A target without
+  `access_action` keeps the action it already has, including one set in the
+  dashboard; a target that states it, `inherit` included, has it enforced.
+- The export writes `access_action` for every target the server reports it
+  on. Applying an older export therefore reverts actions changed in the
+  dashboard since it was taken.
+- Password and PIN secrets are never returned by the API, so the export leaves
+  `password_auth`/`pin_auth` out with a comment. Re-add them before applying;
+  leaving them out keeps the service's existing settings.
+
+> **Upgrading from 1.4.x:** re-export after upgrading. Exports from earlier
+> versions leave out `direct_upstream` when it is false, so applying them
+> switches those targets to direct dialing (the preview now shows this), and
+> they carry no `access_action`.
+
+### Agent Network
+
+The Agent Network (AI gateway) proxies LLM API calls through NetBird with
+access control, limits and guardrails. Providers, guardrails, policies and
+budget rules are matched by `name`.
+
+```yaml
+# agent_network.yml
+netbird_an_settings:
+  enable_log_collection: true
+  redact_pii: true
+  access_log_retention_days: 30
+
+netbird_an_providers:
+  - name: "openai-production"
+    catalog_provider_id: "openai_api"
+    upstream_url: "https://api.openai.com/v1"
+    api_key: "{{ vault_openai_key }}"
+    enabled: true
+    state: present
+
+netbird_an_guardrails:
+  - name: "restrict-models"
+    checks:
+      model_allowlist:
+        enabled: true
+        models:
+          - "gpt-4o"
+    state: present
+
+netbird_an_policies:
+  - name: "dev-team-ai-access"
+    enabled: true
+    source_groups:
+      - developers                    # resolved to ID automatically
+    destination_provider_ids:
+      - openai-production             # provider name, resolved automatically
+    guardrail_ids:
+      - restrict-models               # guardrail name, resolved automatically
+    limits:
+      budget_limit:
+        enabled: true
+        user_cap_usd: 50.00
+        window_seconds: 2592000       # 30 days
+    state: present
+
+netbird_an_budget_rules:
+  - name: "monthly-budget"
+    enabled: true
+    target_groups:
+      - developers                    # resolved to ID automatically
+    target_users: []                  # user IDs, not names
+    limits:
+      budget_limit:
+        enabled: true
+        group_cap_usd: 1000.00
+        window_seconds: 2592000
+    state: present
+```
+
+- Provider API keys are sealed: the API never returns them, so the export
+  writes `api_key: ""`. An existing provider keeps its key when `api_key` is
+  empty; creating a provider requires one. A non-empty `api_key` is sent on
+  every apply (the module cannot compare it), which also rotates it.
+- Updates carry forward any field you leave out. To turn off a limit or a
+  guardrail check, keep it and set `enabled: false`.
+- `netbird_an_settings` is applied as given and is never removed by strict
+  mode.
+
 ## Name-Based ID Resolution
 
 Config files use **plain names** for groups and posture checks — no IDs, no Jinja2 syntax. The playbook resolves names to API IDs automatically at runtime.
@@ -273,7 +434,7 @@ Config files use **plain names** for groups and posture checks — no IDs, no Ji
 How it works:
 1. Groups and posture checks are created first (dependency order)
 2. The playbook fetches all groups/posture checks from the API and builds lookup maps
-3. When applying DNS, networks, and policies, names are resolved to IDs transparently
+3. When applying DNS, networks, services, policies and Agent Network policies and budget rules, names are resolved to IDs transparently (Agent Network policies also resolve provider and guardrail names)
 
 ```yaml
 # Just use plain names — the playbook handles the rest
