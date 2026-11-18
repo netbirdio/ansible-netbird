@@ -1,0 +1,43 @@
+---
+- name: Validate variables
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Detect the package manager
+  ansible.builtin.import_tasks: detect.yml
+
+- name: Install with apt
+  ansible.builtin.include_tasks: apt.yml
+  when: netbird_package_manager == 'apt'
+
+- name: Install with dnf or yum
+  ansible.builtin.include_tasks: rpm.yml
+  when: netbird_package_manager in ['dnf', 'yum']
+
+- name: Install with rpm-ostree
+  ansible.builtin.include_tasks: rpm_ostree.yml
+  when: netbird_package_manager == 'rpm-ostree'
+
+- name: Install with Homebrew
+  ansible.builtin.include_tasks: brew.yml
+  when: netbird_package_manager == 'brew'
+
+- name: Install the macOS package
+  ansible.builtin.include_tasks: macos_pkg.yml
+  when: netbird_package_manager == 'pkg'
+
+- name: Create the NetBird config directory
+  ansible.builtin.file:
+    path: "{{ netbird_config_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Record the package manager
+  ansible.builtin.copy:
+    dest: "{{ netbird_config_dir }}/install.conf"
+    content: "package_manager={{ netbird_package_manager }}\n"
+    mode: "0644"
+  become: true
+
+- name: Manage the service and enroll
+  ansible.builtin.import_tasks: service.yml

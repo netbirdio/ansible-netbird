@@ -1,0 +1,122 @@
+---
+- name: Check for an ostree-booted system
+  ansible.builtin.stat:
+    path: /run/ostree-booted
+  register: _ostree_booted
+  when: ansible_facts['system'] == 'Linux'
+
+- name: Look for package managers
+  ansible.builtin.shell: command -v {{ item }}  # noqa: command-instead-of-shell
+  register: _package_managers
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  loop: [rpm-ostree, bootc, apt-get, dnf, yum, brew]
+
+- name: Select the package manager
+  vars:
+    _found: "{{ _package_managers.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+    _linux: "{{ ansible_facts['system'] == 'Linux' }}"
+    _ostree: "{{ _ostree_booted.stat.exists | default(false) }}"
+  ansible.builtin.set_fact:
+    netbird_package_manager: >-
+      {%- if force_package_manager | length > 0 -%}{{ force_package_manager }}
+      {%- elif ansible_facts['system'] == 'Darwin' -%}pkg
+      {%- elif not _linux -%}unsupported
+      {%- elif 'synology' in ansible_facts['kernel_version'] | lower -%}synology
+      {%- elif ansible_facts['distribution'] | lower == 'nixos' -%}nixos
+      {%- elif _ostree and 'rpm-ostree' in _found -%}rpm-ostree
+      {%- elif _ostree and 'bootc' in _found -%}bootc
+      {%- elif _ostree -%}ostree
+      {%- elif 'apt-get' in _found -%}apt
+      {%- elif 'dnf' in _found -%}dnf
+      {%- elif 'yum' in _found -%}yum
+      {%- else -%}unsupported
+      {%- endif -%}
+    netbird_arch: >-
+      {{ 'amd64' if ansible_facts['architecture'] in ['x86_64', 'amd64'] else
+         'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else
+         ansible_facts['architecture'] }}
+
+- name: Explain NixOS installation
+  ansible.builtin.fail:
+    msg: >-
+      Add NetBird to your NixOS configuration.nix instead: services.netbird.enable = true;
+      {{ 'and environment.systemPackages = [ pkgs.netbird-ui ];' if install_netbird_ui | bool else '' }}
+      then run nixos-rebuild switch.
+  when: netbird_package_manager == 'nixos'
+
+- name: Explain bootc systems without rpm-ostree
+  ansible.builtin.fail:
+    msg: >-
+      This is a bootc system without rpm-ostree, so NetBird cannot be installed through a
+      package manager. Install it in a Distrobox, rebuild the base image with rpm-ostree
+      included, or add NetBird to your Containerfile.
+  when: netbird_package_manager == 'bootc'
+
+- name: Explain ostree systems without rpm-ostree
+  ansible.builtin.fail:
+    msg: >-
+      This ostree-booted system has neither rpm-ostree nor bootc. Install NetBird by
+      rebuilding the base image.
+  when: netbird_package_manager == 'ostree'
+
+- name: Refuse binary-only installs
+  ansible.builtin.fail:
+    msg: >-
+      No supported package manager was found{{ ' (Synology)' if netbird_package_manager == 'synology' else '' }}.
+      This role installs NetBird from packages only (apt, dnf, yum, rpm-ostree, Homebrew or the
+      macOS .pkg). Use install.sh for a binary install on this host.
+  when: netbird_package_manager in ['synology', 'unsupported']
+
+- name: Require brew for the Homebrew install
+  ansible.builtin.assert:
+    that:
+      - _package_managers.results | selectattr('item', 'equalto', 'brew') | map(attribute='rc') | first == 0
+    fail_msg: "force_package_manager=brew, but brew was not found in PATH."
+  when: netbird_package_manager == 'brew'
+
+- name: Reject the UI on unsupported architectures
+  ansible.builtin.fail:
+    msg: "The NetBird UI is only packaged for amd64 and arm64. Set install_netbird_ui=false."
+  when:
+    - install_netbird_ui | bool
+    - netbird_arch not in ['amd64', 'arm64']
+
+- name: Warn about the UI on hosts without a desktop
+  ansible.builtin.debug:
+    msg: >-
+      install_netbird_ui=true on a Linux host without a desktop environment (XDG_CURRENT_DESKTOP
+      is unset in the Ansible session). install.sh would skip the UI here.
+  when:
+    - install_netbird_ui | bool
+    - ansible_facts['system'] == 'Linux'
+    - ansible_facts['env']['XDG_CURRENT_DESKTOP'] | default('') | length == 0
+
+- name: Read the recorded install method
+  ansible.builtin.slurp:
+    path: "{{ netbird_config_dir }}/install.conf"
+  register: _install_conf
+  failed_when: false
+  become: true
+
+- name: Check for an existing NetBird binary
+  ansible.builtin.shell: command -v netbird  # noqa: command-instead-of-shell
+  register: _netbird_binary
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Refuse to take over an install made another way
+  vars:
+    _recorded: "{{ (_install_conf.content | default('') | b64decode | regex_search('package_manager=(\\S+)', '\\1') or ['']) | first }}"
+  ansible.builtin.fail:
+    msg: >-
+      NetBird is already installed on this host
+      {{- ' with ' ~ _recorded if _recorded | length > 0 else ' by an unknown method' }}, and this
+      role would manage it with {{ netbird_package_manager }}. Remove the existing install first,
+      or set allow_existing_netbird=true to let {{ netbird_package_manager }} take over.
+  when:
+    - _netbird_binary.rc == 0
+    - _recorded != netbird_package_manager
+    - not (allow_existing_netbird | bool)

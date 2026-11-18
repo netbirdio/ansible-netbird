@@ -1,0 +1,80 @@
+---
+- name: Install apt prerequisites
+  ansible.builtin.apt:
+    name: [ca-certificates, gnupg]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Remove legacy Wiretrustee repository files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  become: true
+  loop:
+    - /etc/apt/sources.list.d/wiretrustee.list
+    - /etc/apt/trusted.gpg.d/wiretrustee.gpg
+    - /usr/share/keyrings/wiretrustee-archive-keyring.gpg
+
+# Staged in a private directory rather than a fixed /tmp path, for the same
+# reason install.sh does: a fixed name in a shared directory can be planted.
+- name: Create a private download directory
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: netbird.
+  register: _apt_tmp
+  changed_when: false
+  become: true
+
+- name: Install the NetBird repository key
+  block:
+    - name: Download the NetBird repository key
+      ansible.builtin.get_url:
+        url: "{{ netbird_apt_key_url }}"
+        dest: "{{ _apt_tmp.path }}/public.key"
+        mode: "0600"
+      changed_when: false
+      become: true
+
+    - name: Dearmor the NetBird repository key
+      ansible.builtin.command:
+        argv: [gpg, --batch, --yes, --dearmor, --output, "{{ _apt_tmp.path }}/netbird.gpg", "{{ _apt_tmp.path }}/public.key"]
+        creates: "{{ _apt_tmp.path }}/netbird.gpg"
+      changed_when: false
+      become: true
+
+    - name: Install the NetBird keyring
+      ansible.builtin.copy:
+        src: "{{ _apt_tmp.path }}/netbird.gpg"
+        dest: "{{ netbird_apt_keyring }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+  always:
+    - name: Remove the private download directory
+      ansible.builtin.file:
+        path: "{{ _apt_tmp.path }}"
+        state: absent
+      changed_when: false
+      become: true
+
+- name: Configure the NetBird apt repository
+  ansible.builtin.copy:
+    dest: "{{ netbird_apt_source_file }}"
+    content: "{{ netbird_apt_repo }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _apt_source
+  become: true
+
+- name: Install NetBird
+  ansible.builtin.apt:
+    name: "{{ ['netbird'] + (['netbird-ui'] if install_netbird_ui | bool else []) }}"
+    state: "{{ netbird_package_state }}"
+    update_cache: true
+    cache_valid_time: "{{ 0 if _apt_source is changed else 3600 }}"
+  become: true

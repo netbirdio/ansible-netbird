@@ -1,0 +1,33 @@
+---
+- name: Validate boolean options
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) | string | lower in ['true', 'false']
+    fail_msg: "{{ item }} must be true or false."
+    quiet: true
+  loop:
+    - install_netbird_ui
+    - start_netbird_service
+    - enable_netbird_service
+    - force_netbird_setup_key
+    - allow_existing_netbird
+    - allow_homebrew_reinstall
+    - rpm_ostree_reboot
+
+- name: Validate options
+  ansible.builtin.assert:
+    that:
+      - force_package_manager in ['', 'apt', 'dnf', 'yum', 'rpm-ostree', 'brew', 'pkg']
+      - netbird_package_state in ['present', 'latest']
+      - netbird_setup_management_url | length == 0 or netbird_setup_management_url is match('^https?://')
+    fail_msg: >-
+      force_package_manager must be empty or one of apt, dnf, yum, rpm-ostree, brew, pkg;
+      netbird_package_state must be present or latest; netbird_setup_management_url must
+      start with http:// or https://.
+
+- name: Require a running service for enrollment
+  ansible.builtin.assert:
+    that:
+      - start_netbird_service | bool
+    fail_msg: "netbird_setup_key requires start_netbird_service=true so the daemon can enroll."
+  when: netbird_setup_key | length > 0

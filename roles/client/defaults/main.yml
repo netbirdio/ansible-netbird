@@ -1,0 +1,38 @@
+---
+# Mirrors release_files/install.sh from netbirdio/netbird, using the NetBird
+# package repositories. See docs/install.md for what each option does.
+
+install_netbird_ui: false
+# present keeps the installed version, latest upgrades it on every run.
+netbird_package_state: present
+start_netbird_service: true
+enable_netbird_service: true
+
+# Enrollment. The key is passed through the NB_SETUP_KEY environment variable,
+# so it never shows up in the process list.
+netbird_setup_key: ""
+netbird_setup_management_url: ""
+force_netbird_setup_key: false
+
+# Hosts where NetBird was installed some other way (the binary install of
+# install.sh, a different package manager, a manual copy) are refused unless
+# this is true.
+allow_existing_netbird: false
+# Let the Homebrew path stop, uninstall and unlink an existing Homebrew install
+# before reinstalling it, like install.sh does.
+allow_homebrew_reinstall: false
+# Reboot rpm-ostree hosts into the new deployment so the service can start.
+rpm_ostree_reboot: false
+
+# Override package manager detection: apt, dnf, yum, rpm-ostree, brew or pkg.
+force_package_manager: ""
+
+# Repository locations, rarely changed
+netbird_config_dir: /etc/netbird
+netbird_apt_repo: "deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main"
+netbird_apt_key_url: https://pkgs.netbird.io/debian/public.key
+netbird_apt_keyring: /usr/share/keyrings/netbird-archive-keyring.gpg
+netbird_apt_source_file: /etc/apt/sources.list.d/netbird.list
+netbird_yum_baseurl: https://pkgs.netbird.io/yum/
+netbird_yum_gpgkey: https://pkgs.netbird.io/yum/repodata/repomd.xml.key
+netbird_macos_pkg_url: https://pkgs.netbird.io/macos
