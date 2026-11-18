@@ -49,6 +49,7 @@ options:
   expires_in:
     description:
       - Expiration time in seconds.
+      - Set to V(0) for a key that never expires.
       - Default is 86400 (24 hours).
     type: int
     default: 86400

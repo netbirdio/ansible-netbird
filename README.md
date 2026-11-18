@@ -19,7 +19,7 @@ This collection provides comprehensive management of NetBird resources:
   - Domain-based routing (`example.com`, `*.corp.example.com`)
   - High availability with multiple routers and metrics
 - **Routes** - Manage legacy routes (deprecated, use Networks instead)
-- **Services** - Publish internal apps through the NetBird reverse proxy (HTTP, TCP, UDP, TLS)
+- **Services** - Publish internal apps through the NetBird reverse proxy (HTTP, TCP, UDP, TLS), with per-path authentication (bypass or block) on HTTP services
 - **DNS** - Configure nameserver groups and DNS settings
 - **DNS Zones** - Manage DNS zones with A, AAAA, and CNAME records
 - **Posture Checks** - Define security compliance requirements
@@ -35,8 +35,9 @@ This collection provides comprehensive management of NetBird resources:
 
 - Ansible >= 2.15
 - Python >= 3.9
-- A NetBird self-hosted instance with API access
+- NetBird Cloud or a self-hosted NetBird instance with API access
 - A NetBird Personal Access Token
+- For per-path `access_action` on `netbird_service`: NetBird management v0.81.0 or later, with every reverse proxy upgraded
 
 ## Installation
 
@@ -180,7 +181,7 @@ Manage NetBird peer settings.
 
 ### netbird_setup_key
 
-Manage NetBird setup keys for peer enrollment. When updating an existing key, omitting `auto_groups` preserves the current group assignments rather than clearing them.
+Manage NetBird setup keys for peer enrollment. When updating an existing key, omitting `auto_groups` preserves the current group assignments rather than clearing them. `expires_in` is in seconds; set it to `0` for a key that never expires.
 
 ```yaml
 - name: Create reusable setup key
@@ -392,6 +393,45 @@ the module documentation for how an omitted action is handled.
         protocol: http
         target_id: "subnet-resource-id"
         target_type: subnet
+    state: present
+```
+
+Per-path authentication: everything under `/` uses the service's bearer auth,
+`/public/` skips it, and `/admin` is blocked outright. A target without
+`access_action` keeps the action it already has (for example one set in the
+dashboard); setting it, `inherit` included, enforces it.
+
+```yaml
+- name: Public app with a public landing page and a blocked admin path
+  community.ansible_netbird.netbird_service:
+    api_url: "{{ netbird_api_url }}"
+    api_token: "{{ netbird_api_token }}"
+    domain: "myapp.netbird.example.com"
+    private: false
+    auth:
+      bearer_auth:
+        enabled: true
+        distribution_groups:
+          - "all-users-group-id"
+    targets:
+      - target_id: "host-resource-id"
+        target_type: host
+        port: 8080
+        direct_upstream: false
+        path: /
+        access_action: inherit
+      - target_id: "host-resource-id"
+        target_type: host
+        port: 8080
+        direct_upstream: false
+        path: /public/
+        access_action: bypass
+      - target_id: "host-resource-id"
+        target_type: host
+        port: 8080
+        direct_upstream: false
+        path: /admin
+        access_action: block
     state: present
 ```
 
