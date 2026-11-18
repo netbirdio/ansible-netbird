@@ -63,16 +63,19 @@ netbird_services:
         target_id: "{{ target.target_id }}"
         target_type: "{{ target.target_type | default('subnet') }}"
         enabled: {{ target.enabled | default(true) | lower }}
-{% if target.options is defined and target.options is not none %}
-{% if target.options.direct_upstream | default(false) %}
-        direct_upstream: true
-{% endif %}
-{% if target.options.skip_tls_verify | default(false) %}
+{# direct_upstream is always written: the API omits it when false, but
+   netbird_service defaults it to true, so leaving it out flipped every
+   tunnel-dialed target to direct on apply. #}
+{% set opts = target.options | default({}, true) %}
+        direct_upstream: {{ opts.direct_upstream | default(false, true) | bool | lower }}
+{% if opts.skip_tls_verify | default(false) %}
         skip_tls_verify: true
 {% endif %}
-{% if target.options.path_rewrite is defined and target.options.path_rewrite != 'preserve' %}
-        path_rewrite: "{{ target.options.path_rewrite }}"
+{% if opts.path_rewrite is defined and opts.path_rewrite != 'preserve' %}
+        path_rewrite: "{{ opts.path_rewrite }}"
 {% endif %}
+{% if opts.proxy_protocol | default(false) %}
+        proxy_protocol: true
 {% endif %}
 {% if target.path is defined and target.path != '/' %}
         path: "{{ target.path }}"

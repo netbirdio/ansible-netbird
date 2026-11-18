@@ -7,6 +7,8 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
+from ansible.module_utils.common.validation import check_type_bool as _check_type_bool
+
 from ansible_collections.community.ansible_netbird.plugins.module_utils.netbird_api import (
     extract_ids as _extract_ids,
 )
@@ -20,6 +22,11 @@ _AN_SKIP = frozenset(('id', 'created_at', 'updated_at', 'state'))
 _AN_PROVIDER_SKIP = frozenset(('id', 'api_key', 'created_at', 'updated_at', 'state'))
 _TARGET_OPTIONS = ('direct_upstream', 'skip_tls_verify', 'path_rewrite',
                    'proxy_protocol')
+_TARGET_BOOL_OPTIONS = frozenset(('direct_upstream', 'skip_tls_verify',
+                                  'proxy_protocol'))
+# What netbird_service sends for a target option the config leaves out.
+_MODULE_TARGET_DEFAULTS = {'direct_upstream': True, 'skip_tls_verify': False,
+                           'proxy_protocol': False}
 
 
 def _normalize(value):
@@ -265,13 +272,46 @@ def _flatten_target(target):
     while the export template (and the module's input schema) writes these
     as top-level keys.  Normalizing to the flat shape lets the comparison
     work on either representation.
+
+    Missing boolean options are filled in so both sides say what is really
+    meant. An API target (one with ``options``; ``_compare_service`` gives
+    every API target one) omits a boolean when it is false. A config target
+    (``netbird_service`` input, which has no ``options`` key) gets the module's
+    defaults for absent keys, because those are what an apply sends: a config
+    that leaves out ``direct_upstream`` applies it as true, so the preview has
+    to show that change rather than skip the key. An explicit null is left as
+    is -- the module rejects it -- so it reads as a change.
     """
     flat = {k: v for k, v in target.items() if k != 'options'}
-    options = target.get('options')
-    if isinstance(options, dict):
+    if 'options' in target:
+        options = target.get('options')
+        if not isinstance(options, dict):
+            options = {}
         for key in _TARGET_OPTIONS:
-            if key in options:
+            if options.get(key) is not None:
                 flat.setdefault(key, options[key])
+            elif key in _TARGET_BOOL_OPTIONS:
+                flat.setdefault(key, False)
+    else:
+        for key, default in _MODULE_TARGET_DEFAULTS.items():
+            flat.setdefault(key, default)
+            # The module's argument parsing converts quoted and numeric
+            # booleans ("off", "yes", 1, 0) with this same check; anything it
+            # would reject is left as is, so it reads as a change rather than
+            # as a valid value.
+            if flat[key] is not None and not isinstance(flat[key], bool):
+                try:
+                    flat[key] = _check_type_bool(flat[key])
+                except (TypeError, ValueError):
+                    pass
+    return flat
+
+
+def _unsupported_nested_options(target):
+    # A presence marker rather than the value: ``options: null`` is rejected
+    # by the module too, and a None value would be dropped before comparing.
+    flat = {k: v for k, v in target.items() if k != 'options'}
+    flat['options (not a netbird_service target option)'] = True
     return flat
 
 
@@ -305,6 +345,21 @@ def _compare_service(current, desired, group_ids=None):
     removed).
     """
     group_ids = group_ids or {}
+
+    # Read every API target as one: older servers leave ``options`` out
+    # entirely when no option is set, which would otherwise look like a
+    # config target and pick up the module's defaults.
+    if isinstance(current.get('targets'), list):
+        current = dict(current, targets=[
+            dict(t, options=t.get('options') or {}) if isinstance(t, dict) else t
+            for t in current['targets']])
+    # A config target has no ``options`` (netbird_service rejects the key and
+    # takes the options flat). Keep a nested one visible under a name that
+    # says so, rather than read it as API data that happens to match.
+    if isinstance(desired.get('targets'), list):
+        desired = dict(desired, targets=[
+            _unsupported_nested_options(t) if isinstance(t, dict) and 'options' in t else t
+            for t in desired['targets']])
 
     cur = {k: _normalize(v) for k, v in current.items()
            if k not in _SERVICE_SKIP and v is not None}
